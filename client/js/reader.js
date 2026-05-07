@@ -58,15 +58,22 @@ async function initReader(bookId) {
     const arrayBuffer = await epubBlob.arrayBuffer();
     const book = ePub(arrayBuffer);
 
-    // bookのメタデータ解析を待つ
+    // book.openedはタイムアウト付きで待つ（ハング対策）
     _setStatus('書籍構造を解析中…');
-    await book.opened;
+    await Promise.race([
+      book.opened,
+      new Promise(r => setTimeout(r, 3000)),
+    ]);
 
-    // 縦書き（RTL）かどうかを判定
-    const spineDir = book.packaging?.spine?.direction || 'ltr';
-    const isVertical = spineDir === 'rtl';
-    _setStatus(`レイアウト: ${isVertical ? '縦書き' : '横書き'}`);
-    console.log('[reader] spine direction:', spineDir, 'isVertical:', isVertical);
+    // spine方向を複数の場所から取得
+    const d1 = book.packaging?.spine?.direction;
+    const d2 = book.spine?.direction;
+    const d3 = book.packaging?.metadata?.['primary-writing-mode'];
+    const isVertical = d1 === 'rtl' || d2 === 'rtl' || d3 === 'vertical-rl';
+    const debugMsg = `方向検出: ${isVertical ? '縦書き' : '横書き'} (${d1}/${d2}/${d3})`;
+    _setStatus(debugMsg);
+    console.log('[reader] direction:', {d1, d2, d3, isVertical});
+    await new Promise(r => setTimeout(r, 2000)); // 2秒表示
 
     // viewerサイズを確定
     await new Promise(r => setTimeout(r, 200));
