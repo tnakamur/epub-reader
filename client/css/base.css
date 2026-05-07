@@ -1,0 +1,105 @@
+/* base.css — リセット・共通スタイル・トースト */
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --color-primary:   #2c6fad;
+  --color-primary-d: #1a4f80;
+  --color-surface:   #ffffff;
+  --color-bg:        #f4f5f7;
+  --color-text:      #1a1a1a;
+  --color-muted:     #6b7280;
+  --color-border:    #e2e6ea;
+  --radius:          10px;
+  --shadow:          0 2px 12px rgba(0,0,0,.10);
+  --transition:      .18s ease;
+  --header-h:        56px;
+}
+
+html, body {
+  height: 100%;
+  font-family: 'Hiragino Sans', 'Noto Sans JP', 'Yu Gothic', system-ui, sans-serif;
+  color: var(--color-text);
+  background: var(--color-bg);
+  -webkit-font-smoothing: antialiased;
+}
+
+a { color: inherit; text-decoration: none; }
+button { cursor: pointer; border: none; background: none; font: inherit; }
+img { max-width: 100%; display: block; }
+
+/* ── ボタン共通 ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: .4em;
+  padding: .5rem 1.1rem;
+  border-radius: var(--radius);
+  font-size: .9rem;
+  font-weight: 600;
+  transition: background var(--transition), transform var(--transition);
+}
+.btn:active { transform: scale(.97); }
+
+.btn-primary {
+  background: var(--color-primary);
+  color: #fff;
+}
+.btn-primary:hover { background: var(--color-primary-d); }
+
+.btn-ghost {
+  background: transparent;
+  color: var(--color-primary);
+  border: 1.5px solid var(--color-primary);
+}
+.btn-ghost:hover { background: rgba(44,111,173,.08); }
+
+/* ── ローディングスピナー ── */
+.spinner {
+  width: 36px; height: 36px;
+  border: 3.5px solid var(--color-border);
+  border-top-color: var(--color-primary);
+  border-radius: 50%;
+  animation: spin .7s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── トースト ── */
+#toastContainer {
+  position: fixed;
+  bottom: 1.5rem;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: .5rem;
+  z-index: 9999;
+  pointer-events: none;
+}
+
+.toast {
+  min-width: 200px;
+  max-width: 340px;
+  padding: .65rem 1.2rem;
+  border-radius: 999px;
+  font-size: .88rem;
+  font-weight: 500;
+  color: #fff;
+  text-align: center;
+  animation: fadeSlideUp .25s ease;
+  pointer-events: auto;
+}
+.toast-success { background: #2e7d32; }
+.toast-error   { background: #c62828; }
+.toast-info    { background: #1565c0; }
+
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ── スクロールバー ── */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }

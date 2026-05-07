@@ -1,0 +1,72 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>本棚 — epub reader</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/bookshelf.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2c6fad">
+  <link rel="icon" href="icons/icon-192.png">
+</head>
+<body>
+
+  <!-- ヘッダー -->
+  <header class="shelf-header">
+    <span class="logo">📚 epub reader</span>
+    <span class="user-name" id="userName"></span>
+    <button class="btn btn-primary" id="uploadBtn">＋ 追加</button>
+    <button class="btn btn-ghost" id="logoutBtn">ログアウト</button>
+    <input type="file" id="epubInput" accept=".epub" multiple hidden>
+  </header>
+
+  <!-- メイン -->
+  <main class="shelf-main">
+    <div class="shelf-toolbar">
+      <h2>マイライブラリ</h2>
+    </div>
+
+    <!-- ローディング -->
+    <div id="loading" style="display:none">
+      <div class="spinner"></div>
+    </div>
+
+    <!-- 空状態 -->
+    <div id="emptyState" hidden>
+      <svg width="80" height="80" viewBox="0 0 80 80" fill="none">
+        <rect x="18" y="12" width="32" height="44" rx="4" fill="#cbd5e1"/>
+        <rect x="26" y="20" width="32" height="44" rx="4" fill="#e2e8f0"/>
+        <line x1="32" y1="30" x2="52" y2="30" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="32" y1="37" x2="52" y2="37" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+        <line x1="32" y1="44" x2="44" y2="44" stroke="#94a3b8" stroke-width="2.5" stroke-linecap="round"/>
+      </svg>
+      <p>本棚にEPUBを追加しましょう</p>
+      <button class="btn btn-primary" id="emptyUploadBtn">EPUBファイルを追加</button>
+    </div>
+
+    <!-- 本棚グリッド -->
+    <div class="book-grid" id="bookGrid"></div>
+  </main>
+
+  <!-- トースト -->
+  <div id="toastContainer"></div>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/bookshelf.js"></script>
+  <script>
+    // 空状態の追加ボタン
+    document.getElementById('emptyUploadBtn')?.addEventListener('click', () => {
+      document.getElementById('epubInput').click();
+    });
+
+    // PWA Service Worker 登録
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>

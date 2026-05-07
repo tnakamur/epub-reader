@@ -1,0 +1,21 @@
+# 環境変数（絶対にコミットしない）
+.env
+
+# Node.js
+node_modules/
+server/node_modules/
+npm-debug.log*
+
+# EPUBアップロードファイル（ボリュームで管理）
+server/uploads/*
+!server/uploads/.gitkeep
+
+# macOS
+.DS_Store
+
+# エディタ
+.vscode/
+.idea/
+
+# ログ
+*.log

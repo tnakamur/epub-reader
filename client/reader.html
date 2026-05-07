@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>epub reader</title>
+  <link rel="stylesheet" href="css/base.css">
+  <link rel="stylesheet" href="css/reader.css">
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#2c6fad">
+</head>
+<body class="reader-page">
+
+  <!-- ヘッダー -->
+  <header class="reader-header">
+    <button class="header-icon-btn" id="backBtn" title="本棚に戻る">←</button>
+    <div class="book-meta">
+      <h1 id="bookTitle">読み込み中…</h1>
+      <p id="bookAuthor"></p>
+    </div>
+    <button class="header-icon-btn" id="tocBtn"      title="目次">☰</button>
+    <button class="header-icon-btn" id="hlBtn"       title="ハイライト">✏️</button>
+    <button class="header-icon-btn" id="settingsBtn" title="設定">⚙️</button>
+  </header>
+
+  <!-- ビューアー -->
+  <div id="readerContainer">
+    <!-- ローディングオーバーレイ -->
+    <div id="loadingOverlay">
+      <div class="spinner"></div>
+      <span>EPUBを読み込んでいます…</span>
+    </div>
+
+    <!-- EPUB.js レンダリング先 -->
+    <div id="viewer"></div>
+
+    <!-- ページ送りボタン -->
+    <button class="page-btn" id="prevBtn" aria-label="前のページ">‹</button>
+    <button class="page-btn" id="nextBtn" aria-label="次のページ">›</button>
+  </div>
+
+  <!-- フッター（進捗バー） -->
+  <footer class="reader-footer">
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressBar" style="width:0%"></div>
+    </div>
+    <span id="progressLabel">0%</span>
+  </footer>
+
+  <!-- パネルオーバーレイ -->
+  <div id="panelOverlay" class="panel-overlay"></div>
+
+  <!-- 目次パネル -->
+  <aside class="side-panel" id="tocPanel">
+    <div class="panel-header">
+      <h2>目次</h2>
+      <button class="panel-close" onclick="document.getElementById('tocPanel').classList.remove('open')">✕</button>
+    </div>
+    <div class="panel-body" id="tocList"></div>
+  </aside>
+
+  <!-- ハイライトパネル -->
+  <aside class="side-panel" id="highlightPanel">
+    <div class="panel-header">
+      <h2>ハイライト・メモ</h2>
+      <button class="panel-close" onclick="document.getElementById('highlightPanel').classList.remove('open')">✕</button>
+    </div>
+    <div class="panel-body" id="highlightList"></div>
+  </aside>
+
+  <!-- 設定パネル -->
+  <aside class="side-panel" id="settingsPanel">
+    <div class="panel-header">
+      <h2>表示設定</h2>
+      <button class="panel-close" onclick="document.getElementById('settingsPanel').classList.remove('open')">✕</button>
+    </div>
+    <div class="panel-body">
+      <div class="settings-section">
+        <h3>文字サイズ</h3>
+        <div class="font-size-ctrl">
+          <span>A</span>
+          <input type="range" id="fontSizeRange" min="70" max="180" step="5" value="100">
+          <span id="fontSizeLabel">100%</span>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>テーマ</h3>
+        <div class="theme-options">
+          <button class="theme-btn active" data-theme="white" title="ホワイト">白</button>
+          <button class="theme-btn" data-theme="sepia"  title="セピア">茶</button>
+          <button class="theme-btn" data-theme="dark"   title="ダーク">夜</button>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- トースト -->
+  <div id="toastContainer"></div>
+
+  <!-- EPUB.js (CDN) -->
+  <script src="js/jszip.min.js"></script>
+  <script src="js/epub.min.js"></script>
+
+  <script src="js/api.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/db.js"></script>
+  <script src="js/sync.js"></script>
+  <script src="js/highlights.js"></script>
+  <script src="js/reader.js"></script>
+  <script>
+    // パネル表示時にオーバーレイを制御
+    const panelOverlay = document.getElementById('panelOverlay');
+    document.querySelectorAll('.side-panel').forEach(panel => {
+      const observer = new MutationObserver(() => {
+        const anyOpen = [...document.querySelectorAll('.side-panel')].some(p => p.classList.contains('open'));
+        panelOverlay.classList.toggle('show', anyOpen);
+      });
+      observer.observe(panel, { attributes: true, attributeFilter: ['class'] });
+    });
+
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('/sw.js').catch(console.error);
+    }
+  </script>
+</body>
+</html>

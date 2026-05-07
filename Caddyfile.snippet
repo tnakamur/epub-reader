@@ -1,0 +1,49 @@
+# ─────────────────────────────────────────────
+# Caddyfile snippet
+# 既存の Caddyfile に以下のブロックを追記する
+# ─────────────────────────────────────────────
+
+epub.t-nakamura.mydns.jp {
+
+    # ── フロントエンド (静的ファイル) ──────────
+    # epub-web コンテナへ転送
+    handle {
+        reverse_proxy epub-web:80
+    }
+
+    # ── API ────────────────────────────────────
+    # /api/* は epub-api コンテナへ転送
+    handle /api/* {
+        reverse_proxy epub-api:3000
+    }
+
+    # ── EPUBファイル配信 ────────────────────────
+    # /epub/* も API サーバー経由 (JWT認証チェックのため)
+    handle /epub/* {
+        reverse_proxy epub-api:3000
+    }
+
+    # ── ログ ────────────────────────────────────
+    log {
+        output file /var/log/caddy/epub-reader.log {
+            roll_size    50mb
+            roll_keep    5
+        }
+        format json
+    }
+
+    # ── セキュリティヘッダー ────────────────────
+    header {
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+        X-Content-Type-Options    "nosniff"
+        X-Frame-Options           "SAMEORIGIN"
+        Referrer-Policy           "strict-origin-when-cross-origin"
+        # PWA の Service Worker が動作するために必要
+        -Server
+    }
+
+    # ── アップロードサイズ上限（.envのMAX_FILE_SIZE_MBと合わせる）──
+    request_body {
+        max_size 55MB
+    }
+}

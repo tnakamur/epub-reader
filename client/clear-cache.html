@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head><meta charset="UTF-8"><title>完全キャッシュクリア</title></head>
+<body>
+<h2>キャッシュをクリアしています...</h2>
+<div id="log"></div>
+<script>
+const log = document.getElementById('log');
+const add = msg => { log.innerHTML += msg + '<br>'; console.log(msg); };
+
+async function clearAll() {
+  // Service Worker のキャッシュをすべて削除
+  const keys = await caches.keys();
+  for (const key of keys) {
+    await caches.delete(key);
+    add('Cache deleted: ' + key);
+  }
+
+  // Service Worker の登録解除
+  const regs = await navigator.serviceWorker.getRegistrations();
+  for (const reg of regs) {
+    await reg.unregister();
+    add('SW unregistered: ' + reg.scope);
+  }
+
+  // IndexedDB も削除
+  await new Promise((res, rej) => {
+    const r = indexedDB.deleteDatabase('epub-reader');
+    r.onsuccess = () => { add('IndexedDB deleted'); res(); };
+    r.onerror   = () => { add('IndexedDB error'); res(); };
+  });
+
+  add('<strong>完了！3秒後に本棚へ戻ります...</strong>');
+  setTimeout(() => location.href = '/index.html', 3000);
+}
+
+clearAll().catch(e => add('Error: ' + e));
+</script>
+</body>
+</html>
