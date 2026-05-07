@@ -19,3 +19,4 @@ server/uploads/*
 
 # ログ
 *.log
+.aider*

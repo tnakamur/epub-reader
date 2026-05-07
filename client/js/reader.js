@@ -31,6 +31,35 @@ function _setStatus(msg) {
 }
 
 // ─────────────────────────────────────────────
+// EPUBのOPFを直接解析して縦書きかどうか判定
+// book.openedに依存しない独自実装
+// ─────────────────────────────────────────────
+async function detectVertical(arrayBuffer) {
+  try {
+    const zip = await JSZip.loadAsync(arrayBuffer);
+
+    // container.xml からOPFのパスを取得
+    const containerXml = await zip.file('META-INF/container.xml')?.async('string');
+    if (!containerXml) return false;
+
+    const opfPath = containerXml.match(/full-path="([^"]+\.opf)"/)?.[1];
+    if (!opfPath) return false;
+
+    // OPFを読み込む
+    const opfXml = await zip.file(opfPath)?.async('string');
+    if (!opfXml) return false;
+
+    // page-progression-direction="rtl" を検索
+    const isRtl = /page-progression-direction\s*=\s*["']rtl["']/.test(opfXml);
+    console.log('[reader] OPF rtl detection:', isRtl, 'path:', opfPath);
+    return isRtl;
+  } catch (e) {
+    console.warn('[reader] detectVertical error:', e);
+    return false;
+  }
+}
+
+// ─────────────────────────────────────────────
 // EPUB.js 初期化
 // ─────────────────────────────────────────────
 async function initReader(bookId) {
@@ -53,27 +82,17 @@ async function initReader(bookId) {
     const epubBlob = await fetchEpubBlob(bookId);
     if (!epubBlob) return;
 
-    // EPUB.js 初期化
+    // ArrayBufferに変換
     _setStatus('EPUB.jsを初期化中…');
     const arrayBuffer = await epubBlob.arrayBuffer();
-    const book = ePub(arrayBuffer);
 
-    // book.openedはタイムアウト付きで待つ（ハング対策）
+    // OPFを直接解析して縦書き判定（book.openedに依存しない）
     _setStatus('書籍構造を解析中…');
-    await Promise.race([
-      book.opened,
-      new Promise(r => setTimeout(r, 3000)),
-    ]);
+    const isVertical = await detectVertical(arrayBuffer);
+    _setStatus(`レイアウト: ${isVertical ? '縦書き' : '横書き'}`);
+    console.log('[reader] isVertical:', isVertical);
 
-    // spine方向を複数の場所から取得
-    const d1 = book.packaging?.spine?.direction;
-    const d2 = book.spine?.direction;
-    const d3 = book.packaging?.metadata?.['primary-writing-mode'];
-    const isVertical = d1 === 'rtl' || d2 === 'rtl' || d3 === 'vertical-rl';
-    const debugMsg = `方向検出: ${isVertical ? '縦書き' : '横書き'} (${d1}/${d2}/${d3})`;
-    _setStatus(debugMsg);
-    console.log('[reader] direction:', {d1, d2, d3, isVertical});
-    await new Promise(r => setTimeout(r, 2000)); // 2秒表示
+    const book = ePub(arrayBuffer);
 
     // viewerサイズを確定
     await new Promise(r => setTimeout(r, 200));
@@ -90,15 +109,13 @@ async function initReader(bookId) {
 
     // 縦書きと横書きで異なる設定でレンダリング
     const rendition = book.renderTo('viewer', isVertical ? {
-      // 縦書き設定
       width:          w,
       height:         h,
       spread:         'none',
       flow:           'paginated',
       minSpreadWidth: 9999,
-      axis:           'horizontal',  // 縦書きはページが横方向に進む
+      axis:           'horizontal',
     } : {
-      // 横書き設定
       width:          w,
       height:         h,
       spread:         'none',
