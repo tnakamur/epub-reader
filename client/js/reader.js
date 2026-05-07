@@ -123,39 +123,8 @@ async function initReader(bookId) {
       minSpreadWidth: 9999,
     });
 
-    // 縦書きEPUBのみCSS修正
-    if (isVertical) {
-      rendition.hooks.content.register((contents) => {
-        try {
-          const doc = contents.document;
-          if (!doc || !doc.head) return;
-
-          const old = doc.getElementById('epub-reader-fix');
-          if (old) old.remove();
-
-          const style = doc.createElement('style');
-          style.id = 'epub-reader-fix';
-          style.textContent = `
-            html {
-              writing-mode: vertical-rl !important;
-              -webkit-writing-mode: vertical-rl !important;
-            }
-            body {
-              writing-mode: vertical-rl !important;
-              -webkit-writing-mode: vertical-rl !important;
-              height: ${h}px !important;
-              margin: 0 !important;
-              padding: 0 !important;
-              text-align: start !important;
-            }
-          `;
-          doc.head.appendChild(style);
-          console.log('[reader] Vertical CSS injected');
-        } catch(e) {
-          console.warn('[reader] CSS inject error:', e);
-        }
-      });
-    }
+    // 縦書きEPUBはaxis:'horizontal'設定のみで対応
+    // EPUBのCSSに含まれるwriting-mode:vertical-rlをそのまま活かす
 
     // 進捗復元
     _setStatus('進捗を復元中…');
