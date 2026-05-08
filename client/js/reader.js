@@ -108,19 +108,14 @@ async function initReader(bookId) {
     document.getElementById('viewer').style.height = h + 'px';
 
     // 縦書きと横書きで異なる設定でレンダリング
-    const rendition = book.renderTo('viewer', isVertical ? {
+    // 縦書き(rtl)はdirection:'rtl'を渡すことでEPUB.jsが正しくcolumn軸を判定する
+    const rendition = book.renderTo('viewer', {
       width:          w,
       height:         h,
       spread:         'none',
       flow:           'paginated',
       minSpreadWidth: 9999,
-      axis:           'horizontal',
-    } : {
-      width:          w,
-      height:         h,
-      spread:         'none',
-      flow:           'paginated',
-      minSpreadWidth: 9999,
+      ...(isVertical ? { direction: 'rtl' } : {}),
     });
 
     // 縦書きEPUBはaxis:'horizontal'設定のみで対応
