@@ -119,34 +119,30 @@ async function initReader(bookId) {
     });
 
     // 縦書きEPUBのみCSS修正
-    // vertical-rl + text-align:right は下寄せになるため start に上書き
+    // hooks.contentはEPUB.jsのcolumn計算より前に実行されるため上書きされる
+    // renderedイベント（描画後）でinline styleとして直接上書きする
     if (isVertical) {
-      rendition.hooks.content.register((contents) => {
+      rendition.on('rendered', (section, view) => {
         try {
-          const doc = contents.document;
-          if (!doc || !doc.head) return;
+          const doc = view.document;
+          if (!doc || !doc.body) return;
 
-          const old = doc.getElementById('epub-reader-fix');
-          if (old) old.remove();
+          // vertical-rl が含まれない場合はスキップ
+          if (!doc.documentElement.innerHTML.includes('vertical-rl')) return;
 
-          const style = doc.createElement('style');
-          style.id = 'epub-reader-fix';
-          // writing-mode:vertical-rl では column-width は物理的な「高さ」を意味する
-          // EPUB.jsは column-width=画面横幅 を設定するが、正しくは画面高さ を設定すべき
-          // そのためここで column-width を h（画面高さ）に上書きする
-          style.textContent = `
-            body {
-              -webkit-column-width: ${h}px !important;
-              column-width: ${h}px !important;
-            }
-            body, p, div, section, article {
-              text-align: start !important;
-            }
-          `;
-          doc.head.appendChild(style);
-          console.log('[reader] Vertical column-width fix injected, h=' + h);
+          const body = doc.body;
+
+          // EPUB.jsがbodyに設定したcolumn-widthを上書き
+          // vertical-rl では column-width = 物理的な高さ のため h を設定する
+          body.style.setProperty('-webkit-column-width', h + 'px', 'important');
+          body.style.setProperty('column-width', h + 'px', 'important');
+
+          // text-align:right は vertical-rl で下寄せになるため start に上書き
+          body.style.setProperty('text-align', 'start', 'important');
+
+          console.log('[reader] Vertical fix applied via rendered event, h=' + h);
         } catch(e) {
-          console.warn('[reader] CSS inject error:', e);
+          console.warn('[reader] Vertical fix error:', e);
         }
       });
     }
