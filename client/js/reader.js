@@ -131,13 +131,20 @@ async function initReader(bookId) {
 
           const style = doc.createElement('style');
           style.id = 'epub-reader-fix';
+          // writing-mode:vertical-rl では column-width は物理的な「高さ」を意味する
+          // EPUB.jsは column-width=画面横幅 を設定するが、正しくは画面高さ を設定すべき
+          // そのためここで column-width を h（画面高さ）に上書きする
           style.textContent = `
+            body {
+              -webkit-column-width: ${h}px !important;
+              column-width: ${h}px !important;
+            }
             body, p, div, section, article {
               text-align: start !important;
             }
           `;
           doc.head.appendChild(style);
-          console.log('[reader] Vertical text-align fix injected');
+          console.log('[reader] Vertical column-width fix injected, h=' + ${h});
         } catch(e) {
           console.warn('[reader] CSS inject error:', e);
         }
