@@ -144,7 +144,7 @@ async function initReader(bookId) {
             }
           `;
           doc.head.appendChild(style);
-          console.log('[reader] Vertical column-width fix injected, h=' + ${h});
+          console.log('[reader] Vertical column-width fix injected, h=' + h);
         } catch(e) {
           console.warn('[reader] CSS inject error:', e);
         }
