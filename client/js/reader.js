@@ -118,50 +118,38 @@ async function initReader(bookId) {
       ...(isVertical ? { direction: 'rtl' } : {}),
     });
 
-    // 縦書きEPUBデバッグ
+    // 縦書きEPUB修正
+    // rendered イベント（EPUB.jsのcolumn計算完了後）でstyleを直接上書き
+    // innerHTML チェックは不要（外部CSSのため）—isVertical判定済み
     if (isVertical) {
       rendition.on('rendered', (section, view) => {
         try {
-          const doc = view.document;
-          if (!doc || !doc.body) return;
-          if (!doc.documentElement.innerHTML.includes('vertical-rl')) return;
+          // viewからdocを取得。失敗時はiframeから直接取得
+          const iframe = document.querySelector('#viewer iframe');
+          const doc = (view && view.document) || (iframe && (iframe.contentDocument || iframe.contentWindow?.document));
+          if (!doc || !doc.body) {
+            console.warn('[reader] Vertical fix: doc not found');
+            return;
+          }
 
           const body = doc.body;
-          const cs = doc.defaultView.getComputedStyle(body);
+          const cs   = doc.defaultView.getComputedStyle(body);
 
-          // 現在のCSS値を収集
-          const info = {
-            'body.style.columnWidth':    body.style.columnWidth,
-            'body.style.webkitColumnWidth': body.style.webkitColumnWidth,
-            'computed.columnWidth':      cs.columnWidth,
-            'computed.columnCount':      cs.columnCount,
-            'computed.height':           cs.height,
-            'computed.width':            cs.width,
-            'computed.writingMode':      cs.writingMode,
-            'computed.textAlign':        cs.textAlign,
-            'body.clientWidth':          body.clientWidth,
-            'body.clientHeight':         body.clientHeight,
-            'body.scrollWidth':          body.scrollWidth,
-            'body.scrollHeight':         body.scrollHeight,
-            'window.innerW':             doc.defaultView.innerWidth,
-            'window.innerH':             doc.defaultView.innerHeight,
-            'outer h':                   h,
-            'outer w':                   w,
-          };
+          // EPUB.jsが設定したcolumn-widthを確認してログ
+          console.log('[reader] Before fix: columnWidth=' + cs.columnWidth +
+            ' height=' + cs.height + ' width=' + cs.width +
+            ' scrollW=' + body.scrollWidth + ' scrollH=' + body.scrollHeight);
 
-          // デバッグ表示をオーバーレイに追加
-          let dbg = document.getElementById('epub-debug');
-          if (!dbg) {
-            dbg = document.createElement('div');
-            dbg.id = 'epub-debug';
-            dbg.style.cssText = 'position:fixed;top:60px;right:0;background:rgba(0,0,0,.85);color:#0f0;font:11px monospace;padding:8px;z-index:9999;max-width:340px;word-break:break-all;';
-            document.body.appendChild(dbg);
-          }
-          dbg.innerHTML = Object.entries(info).map(([k,v]) => `<b>${k}</b>: ${v}`).join('<br>');
+          // writing-mode:vertical-rl では column-width = 物理的な高さ
+          // EPUB.jsは column-width=w(1110px) を設定するが正しくは h(504px) であるべき
+          body.style.setProperty('-webkit-column-width', h + 'px', 'important');
+          body.style.setProperty('column-width', h + 'px', 'important');
+          // text-align:right は vertical-rl で下寄せになるため start に上書き
+          body.style.setProperty('text-align', 'start', 'important');
 
-          console.log('[reader] Debug info:', info);
+          console.log('[reader] Vertical fix applied: column-width=' + h + 'px');
         } catch(e) {
-          console.warn('[reader] Debug error:', e);
+          console.warn('[reader] Vertical fix error:', e);
         }
       });
     }
