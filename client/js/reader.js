@@ -86,7 +86,7 @@ async function initReader(bookId) {
     _setStatus('EPUB.jsを初期化中…');
     const arrayBuffer = await epubBlob.arrayBuffer();
 
-    // OPFを直接解析して縦書き判定（book.openedに依存しない）
+    // OPFを直接解析して縦書き判定(book.openedに依存しない)
     _setStatus('書籍構造を解析中…');
     const isVertical = await detectVertical(arrayBuffer);
     _setStatus(`レイアウト: ${isVertical ? '縦書き' : '横書き'}`);
@@ -118,38 +118,87 @@ async function initReader(bookId) {
       ...(isVertical ? { direction: 'rtl' } : {}),
     });
 
-    // 縦書きEPUB修正
-    // rendered イベント（EPUB.jsのcolumn計算完了後）でstyleを直接上書き
-    // innerHTML チェックは不要（外部CSSのため）—isVertical判定済み
+    // ★追加 1️⃣ 上寄せ用テーマを登録
+    const topAlignTheme = {
+      "body": {
+        "display": "flex",
+        "flex-direction": "column",
+        "justify-content": "flex-start",   // ← ここで上寄せ
+        "margin": "0",
+        "padding": "0"
+      }
+    };
+    rendition.themes.register("topAlign", topAlignTheme);
+    rendition.themes.select("topAlign");
+
+    // ★追加 2️⃣ フォールバック：章描画時に style タグを注入
+    rendition.on('rendered', (section, view) => {
+      try {
+        const doc = view.document;
+        if (!doc) return;
+        if (!doc.head.querySelector('#topAlignFix')) {
+          const style = doc.createElement('style');
+          style.id = 'topAlignFix';
+          style.textContent = `
+            body {
+              display: flex !important;
+              flex-direction: column !important;
+              justify-content: flex-start !important;
+              margin:0 !important;
+              padding:0 !important;
+            }
+          `;
+          doc.head.appendChild(style);
+        }
+      } catch (e) {
+        console.warn('[reader] 上寄せスタイル注入エラー:', e);
+      }
+    });
+
+    // 縦書きEPUBデバッグ
     if (isVertical) {
       rendition.on('rendered', (section, view) => {
         try {
-          // viewからdocを取得。失敗時はiframeから直接取得
-          const iframe = document.querySelector('#viewer iframe');
-          const doc = (view && view.document) || (iframe && (iframe.contentDocument || iframe.contentWindow?.document));
-          if (!doc || !doc.body) {
-            console.warn('[reader] Vertical fix: doc not found');
-            return;
-          }
+          const doc = view.document;
+          if (!doc || !doc.body) return;
+          if (!doc.documentElement.innerHTML.includes('vertical-rl')) return;
 
           const body = doc.body;
-          const cs   = doc.defaultView.getComputedStyle(body);
+          const cs = doc.defaultView.getComputedStyle(body);
 
-          // EPUB.jsが設定したcolumn-widthを確認してログ
-          console.log('[reader] Before fix: columnWidth=' + cs.columnWidth +
-            ' height=' + cs.height + ' width=' + cs.width +
-            ' scrollW=' + body.scrollWidth + ' scrollH=' + body.scrollHeight);
+          // 現在のCSS値を収集
+          const info = {
+            'body.style.columnWidth':    body.style.columnWidth,
+            'body.style.webkitColumnWidth': body.style.webkitColumnWidth,
+            'computed.columnWidth':      cs.columnWidth,
+            'computed.columnCount':      cs.columnCount,
+            'computed.height':           cs.height,
+            'computed.width':            cs.width,
+            'computed.writingMode':      cs.writingMode,
+            'computed.textAlign':        cs.textAlign,
+            'body.clientWidth':          body.clientWidth,
+            'body.clientHeight':         body.clientHeight,
+            'body.scrollWidth':          body.scrollWidth,
+            'body.scrollHeight':         body.scrollHeight,
+            'window.innerW':             doc.defaultView.innerWidth,
+            'window.innerH':             doc.defaultView.innerHeight,
+            'outer h':                   h,
+            'outer w':                   w,
+          };
 
-          // writing-mode:vertical-rl では column-width = 物理的な高さ
-          // EPUB.jsは column-width=w(1110px) を設定するが正しくは h(504px) であるべき
-          body.style.setProperty('-webkit-column-width', h + 'px', 'important');
-          body.style.setProperty('column-width', h + 'px', 'important');
-          // text-align:right は vertical-rl で下寄せになるため start に上書き
-          body.style.setProperty('text-align', 'start', 'important');
+          // デバッグ表示をオーバーレイに追加
+          let dbg = document.getElementById('epub-debug');
+          if (!dbg) {
+            dbg = document.createElement('div');
+            dbg.id = 'epub-debug';
+            dbg.style.cssText = 'position:fixed;top:60px;right:0;background:rgba(0,0,0,.85);color:#0f0;font:11px monospace;padding:8px;z-index:9999;max-width:340px;word-break:break-all;';
+            document.body.appendChild(dbg);
+          }
+          dbg.innerHTML = Object.entries(info).map(([k, v]) => `<b>${k}</b>: ${v}`).join('<br>');
 
-          console.log('[reader] Vertical fix applied: column-width=' + h + 'px');
-        } catch(e) {
-          console.warn('[reader] Vertical fix error:', e);
+          console.log('[reader] Debug info:', info);
+        } catch (e) {
+          console.warn('[reader] Debug error:', e);
         }
       });
     }
@@ -207,7 +256,7 @@ async function initReader(bookId) {
       }, 2000);
     });
 
-    // ページ数算出（バックグラウンド）
+    // ページ数算出(バックグラウンド)
     book.ready
       .then(() => book.locations.generate(1000))
       .then(() => console.log('[reader] Locations generated'))
@@ -237,7 +286,7 @@ async function initReader(bookId) {
 }
 
 // ─────────────────────────────────────────────
-// EPUBファイル取得（キャッシュ付き）
+// EPUBファイル取得(キャッシュ付き)
 // ─────────────────────────────────────────────
 async function fetchEpubBlob(bookId) {
   try {
