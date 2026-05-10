@@ -107,49 +107,49 @@ async function initReader(bookId) {
     document.getElementById('viewer').style.width  = w + 'px';
     document.getElementById('viewer').style.height = h + 'px';
 
-    // 縦書きと横書きで異なる設定でレンダリング
-    // 縦書き(rtl)はdirection:'rtl'を渡すことでEPUB.jsが正しくcolumn軸を判定する
-    const rendition = book.renderTo('viewer', {
+    // 縦書きEPUBは scrolled-doc で描画し、prev/next で1画面分スクロール
+    // paginated モードの column-width 計算問題を完全に回避する
+    const rendition = book.renderTo('viewer', isVertical ? {
+      width:          w,
+      height:         h,
+      spread:         'none',
+      flow:           'scrolled-doc',
+      direction:      'rtl',
+    } : {
       width:          w,
       height:         h,
       spread:         'none',
       flow:           'paginated',
       minSpreadWidth: 9999,
-      ...(isVertical ? { direction: 'rtl' } : {}),
     });
 
+    // 縦書き: text-align を start に統一
     // 縦書きEPUB修正
-    // rendered イベント（EPUB.jsのcolumn計算完了後）でstyleを直接上書き
-    // innerHTML チェックは不要（外部CSSのため）—isVertical判定済み
+    // hooks.content内でcontents.columns()をmonkey-patchし
+    // columnWidthパラメータをw→hに置き換える
+    // これによりEPUB.jsのスクロール計算も正しい値で行われる
     if (isVertical) {
-      rendition.on('rendered', (section, view) => {
+      rendition.hooks.content.register((contents) => {
         try {
-          // viewからdocを取得。失敗時はiframeから直接取得
-          const iframe = document.querySelector('#viewer iframe');
-          const doc = (view && view.document) || (iframe && (iframe.contentDocument || iframe.contentWindow?.document));
-          if (!doc || !doc.body) {
-            console.warn('[reader] Vertical fix: doc not found');
-            return;
+          // columns()をmonkey-patch: columnWidth(=w=1110)をh(=504)に置き換え
+          const origColumns = contents.columns.bind(contents);
+          contents.columns = function(cw, ch, columnWidth, gap, dir) {
+            console.log('[reader] columns() intercepted: orig=' + columnWidth + ' → ' + ch);
+            return origColumns(cw, ch, ch, gap, dir);
+          };
+
+          // text-align:right は vertical-rl で下寄せになるためstart に上書き
+          const doc = contents.document;
+          if (doc && doc.head) {
+            const old = doc.getElementById('epub-valign-fix');
+            if (old) old.remove();
+            const style = doc.createElement('style');
+            style.id = 'epub-valign-fix';
+            style.textContent = 'body,p,div,section{text-align:start!important;}';
+            doc.head.appendChild(style);
           }
-
-          const body = doc.body;
-          const cs   = doc.defaultView.getComputedStyle(body);
-
-          // EPUB.jsが設定したcolumn-widthを確認してログ
-          console.log('[reader] Before fix: columnWidth=' + cs.columnWidth +
-            ' height=' + cs.height + ' width=' + cs.width +
-            ' scrollW=' + body.scrollWidth + ' scrollH=' + body.scrollHeight);
-
-          // writing-mode:vertical-rl では column-width = 物理的な高さ
-          // EPUB.jsは column-width=w(1110px) を設定するが正しくは h(504px) であるべき
-          body.style.setProperty('-webkit-column-width', h + 'px', 'important');
-          body.style.setProperty('column-width', h + 'px', 'important');
-          // text-align:right は vertical-rl で下寄せになるため start に上書き
-          body.style.setProperty('text-align', 'start', 'important');
-
-          console.log('[reader] Vertical fix applied: column-width=' + h + 'px');
         } catch(e) {
-          console.warn('[reader] Vertical fix error:', e);
+          console.warn('[reader] Vertical hooks.content error:', e);
         }
       });
     }
