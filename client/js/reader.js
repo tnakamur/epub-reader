@@ -107,50 +107,51 @@ async function initReader(bookId) {
     document.getElementById('viewer').style.width  = w + 'px';
     document.getElementById('viewer').style.height = h + 'px';
 
-    // 縦書きEPUBは scrolled-doc で描画し、prev/next で1画面分スクロール
-    // paginated モードの column-width 計算問題を完全に回避する
-    const rendition = book.renderTo('viewer', isVertical ? {
-      width:          w,
-      height:         h,
-      spread:         'none',
-      flow:           'scrolled-doc',
-      direction:      'rtl',
-    } : {
+    const rendition = book.renderTo('viewer', {
       width:          w,
       height:         h,
       spread:         'none',
       flow:           'paginated',
       minSpreadWidth: 9999,
+      ...(isVertical ? { direction: 'rtl' } : {}),
     });
 
-    // 縦書き: text-align を start に統一
-    // 縦書きEPUB修正
-    // hooks.content内でcontents.columns()をmonkey-patchし
-    // columnWidthパラメータをw→hに置き換える
-    // これによりEPUB.jsのスクロール計算も正しい値で行われる
+    // 縦書きEPUBのみCSS修正
+    // hooks.content で html/body の inline style に writing-mode を設定する
+    // → EPUB.js の writingMode() が getComputedStyle で vertical-rl を検出
+    // → EPUB.js が axis='vertical' を使い column-width=h で正しくレイアウト
     if (isVertical) {
       rendition.hooks.content.register((contents) => {
         try {
-          // columns()をmonkey-patch: columnWidth(=w=1110)をh(=504)に置き換え
-          const origColumns = contents.columns.bind(contents);
-          contents.columns = function(cw, ch, columnWidth, gap, dir) {
-            console.log('[reader] columns() intercepted: orig=' + columnWidth + ' → ' + ch);
-            return origColumns(cw, ch, ch, gap, dir);
-          };
-
-          // text-align:right は vertical-rl で下寄せになるためstart に上書き
           const doc = contents.document;
-          if (doc && doc.head) {
-            const old = doc.getElementById('epub-valign-fix');
-            if (old) old.remove();
-            const style = doc.createElement('style');
-            style.id = 'epub-valign-fix';
-            style.textContent = 'body,p,div,section{text-align:start!important;}';
-            doc.head.appendChild(style);
-          }
+          if (!doc || !doc.body) return;
+
+          // inline style で設定（外部CSSより優先してEPUB.jsに検出される）
+          doc.documentElement.style.writingMode       = 'vertical-rl';
+          doc.documentElement.style.webkitWritingMode = 'vertical-rl';
+          doc.body.style.writingMode                  = 'vertical-rl';
+          doc.body.style.webkitWritingMode            = 'vertical-rl';
+          // text-align:right は vertical-rl で下寄せになるため上書き
+          doc.body.style.textAlign = 'start';
+
+          console.log('[reader] Vertical inline writing-mode set');
         } catch(e) {
-          console.warn('[reader] Vertical hooks.content error:', e);
+          console.warn('[reader] hooks.content error:', e);
         }
+      });
+
+      // rendered後のデバッグログ
+      rendition.on('rendered', (section, view) => {
+        try {
+          const iframe = document.querySelector('#viewer iframe');
+          const doc = (view && view.document)
+            || (iframe && (iframe.contentDocument || iframe.contentWindow?.document));
+          if (!doc || !doc.body) return;
+          const cs = doc.defaultView.getComputedStyle(doc.body);
+          console.log('[reader] After render: columnWidth=' + cs.columnWidth
+            + ' height=' + cs.height + ' writingMode=' + cs.writingMode
+            + ' scrollW=' + doc.body.scrollWidth + ' scrollH=' + doc.body.scrollHeight);
+        } catch(e) {}
       });
     }
 
