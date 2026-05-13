@@ -11,6 +11,7 @@ const booksRoutes      = require('./routes/books');
 const epubRoutes       = require('./routes/epub');
 const highlightsRoutes = require('./routes/highlights');
 const progressRoutes   = require('./routes/progress');
+const debugRoutes = require('./routes/debug');
 
 const app = express();
 
@@ -54,6 +55,7 @@ app.use('/api/books',      booksRoutes);
 app.use('/epub',           epubRoutes);       // JWT認証後にEPUBファイル配信
 app.use('/api/highlights', highlightsRoutes);
 app.use('/api/progress',   progressRoutes);
+app.use('/api/debug',      debugRoutes);
 
 // ── 404 ──────────────────────────────────────────
 app.use((_req, res) => res.status(404).json({ error: 'Not found' }));

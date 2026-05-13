@@ -30,6 +30,27 @@ function _setStatus(msg) {
   if (el) el.textContent = msg;
 }
 
+// サーバーへログを送信するバッファ付きロガー
+const _serverLog = (() => {
+  const buf = [];
+  let timer = null;
+  const flush = () => {
+    if (!buf.length) return;
+    const logs = buf.splice(0);
+    fetch('/api/debug/log', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ logs }),
+    }).catch(() => {});
+  };
+  return (msg) => {
+    console.log('[DEBUG]', msg);
+    buf.push(msg);
+    clearTimeout(timer);
+    timer = setTimeout(flush, 500);
+  };
+})();
+
 // ─────────────────────────────────────────────
 // EPUBのOPFを直接解析して縦書きかどうか判定
 // book.openedに依存しない独自実装
@@ -140,18 +161,25 @@ async function initReader(bookId) {
         }
       });
 
-      // rendered後のデバッグログ
+      // rendered後のデバッグログをサーバーへ送信
       rendition.on('rendered', (section, view) => {
         try {
           const iframe = document.querySelector('#viewer iframe');
           const doc = (view && view.document)
             || (iframe && (iframe.contentDocument || iframe.contentWindow?.document));
           if (!doc || !doc.body) return;
-          const cs = doc.defaultView.getComputedStyle(doc.body);
-          console.log('[reader] After render: columnWidth=' + cs.columnWidth
-            + ' height=' + cs.height + ' writingMode=' + cs.writingMode
-            + ' scrollW=' + doc.body.scrollWidth + ' scrollH=' + doc.body.scrollHeight);
-        } catch(e) {}
+          const cs  = doc.defaultView.getComputedStyle(doc.body);
+          const bcs = doc.defaultView.getComputedStyle(doc.documentElement);
+          _serverLog('=== rendered: ' + (view?.section?.href || '') + ' ===');
+          _serverLog('columnWidth=' + cs.columnWidth + ' height=' + cs.height + ' width=' + cs.width);
+          _serverLog('writingMode(body)=' + cs.writingMode + ' writingMode(html)=' + bcs.writingMode);
+          _serverLog('textAlign=' + cs.textAlign + ' direction=' + cs.direction);
+          _serverLog('scrollW=' + doc.body.scrollWidth + ' scrollH=' + doc.body.scrollHeight);
+          _serverLog('body.style.wm=' + doc.body.style.writingMode + ' html.style.wm=' + doc.documentElement.style.writingMode);
+          _serverLog('outer w=' + w + ' h=' + h);
+        } catch(e) {
+          _serverLog('rendered debug error: ' + e.message);
+        }
       });
     }
 
