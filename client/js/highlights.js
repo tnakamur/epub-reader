@@ -3,12 +3,12 @@
 /**
  * highlights.js
  * リーダー画面上のハイライト・メモ UI
- * reader.js から bookId, rendition を受け取って初期化する
+ * reader.js から bookId, view (foliate-js View) を受け取って初期化する
  */
 
 const highlights = (() => {
   let _bookId   = null;
-  let _rendition = null;
+  let _view     = null;
   let _list     = [];   // { id, cfiRange, selectedText, color, note }
 
   const COLORS = {
@@ -19,12 +19,12 @@ const highlights = (() => {
   };
 
   // ── 初期化 ──────────────────────────────────
-  async function init(bookId, rendition) {
-    _bookId    = bookId;
-    _rendition = rendition;
+  async function init(bookId, view) {
+    _bookId = bookId;
+    _view   = view;
 
     await _load();
-    _bindRenditionEvents();
+    _bindViewEvents();
     _renderPanel();
   }
 
@@ -44,13 +44,11 @@ const highlights = (() => {
 
   function _applyOne(h) {
     try {
-      _rendition.annotations.highlight(
-        h.cfi_range,
-        {},
-        null,
-        'epub-highlight',
-        { fill: COLORS[h.color] || COLORS.yellow, 'fill-opacity': '0.4' }
-      );
+      _view.addAnnotation({
+        value: h.cfi_range,
+        type: 'highlight',
+        color: COLORS[h.color] || COLORS.yellow,
+      });
     } catch {
       // CFI が無効な場合は無視
     }
@@ -58,73 +56,33 @@ const highlights = (() => {
 
   function _removeOne(h) {
     try {
-      _rendition.annotations.remove(h.cfi_range, 'highlight');
+      _view.deleteAnnotation({ value: h.cfi_range });
     } catch {}
   }
 
-  // ── テキスト選択 → コンテキストメニュー ────────
-  function _bindRenditionEvents() {
-    _rendition.on('selected', (cfiRange, contents) => {
-      const selection = contents.window.getSelection();
-      const selectedText = selection?.toString().trim();
-      if (!selectedText) return;
-
-      _showContextMenu(cfiRange, selectedText, contents);
+  // ── テキスト選択 → ハイライト作成 ────────────
+  function _bindViewEvents() {
+    // draw-annotation イベントでハイライト描画方法を指定
+    _view.addEventListener('draw-annotation', (e) => {
+      const { draw, annotation } = e.detail;
+      if (annotation.type === 'highlight') {
+        draw(rects => {
+          // SVG でハイライト矩形を描画
+          const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+          g.setAttribute('fill', annotation.color);
+          g.style.opacity = '0.3';
+          for (const { left, top, height, width } of rects) {
+            const el = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+            el.setAttribute('x', left);
+            el.setAttribute('y', top);
+            el.setAttribute('height', height);
+            el.setAttribute('width', width);
+            g.append(el);
+          }
+          return g;
+        });
+      }
     });
-  }
-
-  function _showContextMenu(cfiRange, selectedText, contents) {
-    // 既存メニューを削除
-    document.getElementById('highlightMenu')?.remove();
-
-    const menu = document.createElement('div');
-    menu.id = 'highlightMenu';
-    menu.className = 'highlight-menu';
-    menu.innerHTML = `
-      <div class="hm-title">ハイライト色を選択</div>
-      <div class="hm-colors">
-        ${Object.entries(COLORS).map(([key, val]) =>
-          `<button class="hm-color" data-color="${key}" style="background:${val}" title="${key}"></button>`
-        ).join('')}
-      </div>
-      <button class="hm-cancel">キャンセル</button>
-    `;
-
-    document.getElementById('readerContainer').appendChild(menu);
-    _positionMenuNearSelection(menu, contents);
-
-    // 色選択
-    menu.querySelectorAll('.hm-color').forEach(btn => {
-      btn.addEventListener('click', async () => {
-        const color = btn.dataset.color;
-        menu.remove();
-        await _create(cfiRange, selectedText, color);
-      });
-    });
-
-    menu.querySelector('.hm-cancel').addEventListener('click', () => menu.remove());
-  }
-
-  function _positionMenuNearSelection(menu, contents) {
-    // iframeの座標を取得して配置
-    const iframe = document.querySelector('iframe');
-    if (!iframe) return;
-    const rect   = iframe.getBoundingClientRect();
-    menu.style.top  = `${rect.top + 80}px`;
-    menu.style.left = `${rect.left + rect.width / 2 - 120}px`;
-  }
-
-  // ── CRUD ────────────────────────────────────
-  async function _create(cfiRange, selectedText, color) {
-    const payload = { bookId: _bookId, cfiRange, selectedText, color, note: '' };
-    const data = await sync.writeHighlight('create', payload);
-
-    // オフライン時はローカルに仮追加
-    const tempId = data?.id || `local-${crypto.randomUUID()}`;
-    const newH = { id: tempId, cfi_range: cfiRange, selected_text: selectedText, color, note: '' };
-    _list.push(newH);
-    _applyOne(newH);
-    _renderPanel();
   }
 
   async function deleteHighlight(h) {
@@ -165,7 +123,7 @@ const highlights = (() => {
       el.addEventListener('click', (e) => {
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA') return;
         const h = _list.find(x => x.id === el.dataset.id);
-        if (h) _rendition.display(h.cfi_range);
+        if (h) _view.goTo(h.cfi_range);
       });
     });
 
@@ -196,7 +154,7 @@ const highlights = (() => {
       .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
   }
 
-  return { init };
+  return { init, deleteHighlight };
 })();
 
 window.highlights = highlights;

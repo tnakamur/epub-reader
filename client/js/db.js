@@ -10,7 +10,7 @@
  */
 
 const DB_NAME    = 'epub-reader';
-const DB_VERSION = 1;
+const DB_VERSION = 3; // Increment to trigger IndexedDB upgrade (reset cache)
 
 let _db = null;
 

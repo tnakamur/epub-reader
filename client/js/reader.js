@@ -2,8 +2,9 @@
 
 /**
  * reader.js
- * EPUB.js 初期化・ページ送り・進捗同期・設定
+ * foliate-js 初期化・ページ送り・進捗同期・設定
  */
+import { makeBook, View } from 'https://cdn.jsdelivr.net/npm/foliate-js@1.0.1/view.js';
 
 const DEVICE_ID = (() => {
   let id = localStorage.getItem('deviceId');
@@ -52,36 +53,7 @@ const _serverLog = (() => {
 })();
 
 // ─────────────────────────────────────────────
-// EPUBのOPFを直接解析して縦書きかどうか判定
-// book.openedに依存しない独自実装
-// ─────────────────────────────────────────────
-async function detectVertical(arrayBuffer) {
-  try {
-    const zip = await JSZip.loadAsync(arrayBuffer);
-
-    // container.xml からOPFのパスを取得
-    const containerXml = await zip.file('META-INF/container.xml')?.async('string');
-    if (!containerXml) return false;
-
-    const opfPath = containerXml.match(/full-path="([^"]+\.opf)"/)?.[1];
-    if (!opfPath) return false;
-
-    // OPFを読み込む
-    const opfXml = await zip.file(opfPath)?.async('string');
-    if (!opfXml) return false;
-
-    // page-progression-direction="rtl" を検索
-    const isRtl = /page-progression-direction\s*=\s*["']rtl["']/.test(opfXml);
-    console.log('[reader] OPF rtl detection:', isRtl, 'path:', opfPath);
-    return isRtl;
-  } catch (e) {
-    console.warn('[reader] detectVertical error:', e);
-    return false;
-  }
-}
-
-// ─────────────────────────────────────────────
-// EPUB.js 初期化
+// foliate-js 初期化
 // ─────────────────────────────────────────────
 async function initReader(bookId) {
   try {
@@ -103,158 +75,74 @@ async function initReader(bookId) {
     const epubBlob = await fetchEpubBlob(bookId);
     if (!epubBlob) return;
 
-    // ArrayBufferに変換
-    _setStatus('EPUB.jsを初期化中…');
-    const arrayBuffer = await epubBlob.arrayBuffer();
-
-    // OPFを直接解析して縦書き判定（book.openedに依存しない）
-    _setStatus('書籍構造を解析中…');
-    const isVertical = await detectVertical(arrayBuffer);
-    _setStatus(`レイアウト: ${isVertical ? '縦書き' : '横書き'}`);
-    console.log('[reader] isVertical:', isVertical);
-
-    const book = ePub(arrayBuffer);
-
-    // viewerサイズを確定
-    await new Promise(r => setTimeout(r, 200));
-
-    const headerH = document.querySelector('.reader-header')?.offsetHeight || 56;
-    const footerH = document.querySelector('.reader-footer')?.offsetHeight || 36;
-    const h = window.innerHeight - headerH - footerH;
-    const w = window.innerWidth;
-
-    _setStatus(`ビューアー初期化中 (${w}x${h})…`);
-
-    document.getElementById('viewer').style.width  = w + 'px';
-    document.getElementById('viewer').style.height = h + 'px';
-
-    const rendition = book.renderTo('viewer', {
-      width:          w,
-      height:         h,
-      spread:         'none',
-      flow:           'paginated',
-      minSpreadWidth: 9999,
-      ...(isVertical ? { direction: 'rtl' } : {}),
-    });
-
-    // 縦書きEPUBのみCSS修正
-    // hooks.content で html/body の inline style に writing-mode を設定する
-    // → EPUB.js の writingMode() が getComputedStyle で vertical-rl を検出
-    // → EPUB.js が axis='vertical' を使い column-width=h で正しくレイアウト
-    if (isVertical) {
-      rendition.hooks.content.register((contents) => {
-        try {
-          const doc = contents.document;
-          if (!doc || !doc.body) return;
-
-          // inline style で設定（外部CSSより優先してEPUB.jsに検出される）
-          doc.documentElement.style.writingMode       = 'vertical-rl';
-          doc.documentElement.style.webkitWritingMode = 'vertical-rl';
-          doc.body.style.writingMode                  = 'vertical-rl';
-          doc.body.style.webkitWritingMode            = 'vertical-rl';
-          // text-align:right は vertical-rl で下寄せになるため上書き
-          doc.body.style.textAlign = 'start';
-
-          console.log('[reader] Vertical inline writing-mode set');
-        } catch(e) {
-          console.warn('[reader] hooks.content error:', e);
-        }
-      });
-
-      // rendered後のデバッグログをサーバーへ送信
-      rendition.on('rendered', (section, view) => {
-        try {
-          const iframe = document.querySelector('#viewer iframe');
-          const doc = (view && view.document)
-            || (iframe && (iframe.contentDocument || iframe.contentWindow?.document));
-          if (!doc || !doc.body) return;
-          const cs  = doc.defaultView.getComputedStyle(doc.body);
-          const bcs = doc.defaultView.getComputedStyle(doc.documentElement);
-          _serverLog('=== rendered: ' + (view?.section?.href || '') + ' ===');
-          _serverLog('columnWidth=' + cs.columnWidth + ' height=' + cs.height + ' width=' + cs.width);
-          _serverLog('writingMode(body)=' + cs.writingMode + ' writingMode(html)=' + bcs.writingMode);
-          _serverLog('textAlign=' + cs.textAlign + ' direction=' + cs.direction);
-          _serverLog('scrollW=' + doc.body.scrollWidth + ' scrollH=' + doc.body.scrollHeight);
-          _serverLog('body.style.wm=' + doc.body.style.writingMode + ' html.style.wm=' + doc.documentElement.style.writingMode);
-          _serverLog('outer w=' + w + ' h=' + h);
-        } catch(e) {
-          _serverLog('rendered debug error: ' + e.message);
-        }
-      });
-    }
+    // foliate-js で EPUB を解析
+    _setStatus('EPUBを解析中…');
+    const book = await makeBook(epubBlob);
+    console.log('[reader] Book loaded:', book.metadata?.title, 'dir:', book.dir);
 
     // 進捗復元
     _setStatus('進捗を復元中…');
     const progressRes = await api.get(`/api/progress/${bookId}`);
-    const startCfi = progressRes.ok && progressRes.data?.cfi
+    const lastLocation = progressRes.ok && progressRes.data?.cfi
       ? progressRes.data.cfi
-      : undefined;
+      : null;
 
-    // ページ表示
-    _setStatus('ページを表示中…');
+    // View 要素を作成してコンテナに追加
+    _setStatus('ビューアーを初期化中…');
+    const view = document.createElement('foliate-view');
+    const container = document.getElementById('viewer');
+    container.appendChild(view);
 
-    rendition.once('rendered', () => {
-      document.getElementById('loadingOverlay').style.display = 'none';
-    });
+    // 書籍を開く
+    await view.open(book);
 
-    setTimeout(() => {
-      document.getElementById('loadingOverlay').style.display = 'none';
-    }, 3000);
+    // 前回の位置から復元、または先頭から開始
+    await view.init({ lastLocation, showTextStart: !lastLocation });
 
-    rendition.display(startCfi);
+    // ローディング非表示
+    document.getElementById('loadingOverlay').style.display = 'none';
 
     // テーマ・フォント設定
-    applyTheme(rendition, loadSettings());
+    applyTheme(view, loadSettings());
 
     // ページ送りボタン
-    document.getElementById('prevBtn').addEventListener('click', () => rendition.prev());
-    document.getElementById('nextBtn').addEventListener('click', () => rendition.next());
+    document.getElementById('prevBtn').addEventListener('click', () => view.prev());
+    document.getElementById('nextBtn').addEventListener('click', () => view.next());
 
     // キーボード
     document.addEventListener('keyup', (e) => {
-      if (e.key === 'ArrowLeft')  rendition.prev();
-      if (e.key === 'ArrowRight') rendition.next();
-    });
-    rendition.on('keyup', (e) => {
-      if (e.key === 'ArrowLeft')  rendition.prev();
-      if (e.key === 'ArrowRight') rendition.next();
+      if (e.key === 'ArrowLeft')  view.goLeft();
+      if (e.key === 'ArrowRight') view.goRight();
     });
 
     // 進捗更新
     let saveTimer;
-    rendition.on('relocated', (location) => {
-      const pct = book.locations.percentageFromCfi(location.start.cfi) * 100;
+    view.addEventListener('relocate', (e) => {
+      const loc = e.detail;
+      const pct = (loc.fraction ?? 0) * 100;
       updateProgressBar(pct);
       clearTimeout(saveTimer);
       saveTimer = setTimeout(() => {
         sync.writeProgress({
           bookId,
-          cfi:        location.start.cfi,
+          cfi:        loc.cfi,
           percentage: parseFloat(pct.toFixed(2)),
           deviceId:   DEVICE_ID,
         });
       }, 2000);
     });
 
-    // ページ数算出（バックグラウンド）
-    book.ready
-      .then(() => book.locations.generate(1000))
-      .then(() => console.log('[reader] Locations generated'))
-      .catch(e => console.warn('[reader] Locations error:', e));
-
     // ハイライト初期化
-    await highlights.init(bookId, rendition);
+    await highlights.init(bookId, view);
 
     // 設定パネル
-    initSettings(rendition);
+    initSettings(view);
 
     // 目次
-    book.loaded.navigation
-      .then(nav => renderToc(nav.toc, rendition))
-      .catch(e => console.warn('[reader] TOC error:', e));
+    renderToc(book, view);
 
     // スワイプ・ホイール
-    initGestures(rendition);
+    initGestures(view);
 
     // UIトグル
     initUiToggles();
@@ -330,14 +218,20 @@ function updateProgressBar(pct) {
 // ─────────────────────────────────────────────
 // 目次
 // ─────────────────────────────────────────────
-function renderToc(toc, rendition) {
+function renderToc(book, view) {
   const list = document.getElementById('tocList');
-  if (!list || !toc) return;
+  if (!list) return;
+
+  const toc = book.toc;
+  if (!toc || !toc.length) {
+    list.innerHTML = '<p class="hl-empty">目次はありません</p>';
+    return;
+  }
 
   function renderItems(items, depth) {
     return items.map(item => `
       <li style="padding-left:${depth * 12}px">
-        <a href="#" data-href="${item.href}">${item.label.trim()}</a>
+        <a href="#" data-href="${item.href}">${(item.label || '').trim()}</a>
         ${item.subitems?.length ? `<ul>${renderItems(item.subitems, depth+1).join('')}</ul>` : ''}
       </li>
     `).join('');
@@ -347,7 +241,7 @@ function renderToc(toc, rendition) {
   list.querySelectorAll('a[data-href]').forEach(a => {
     a.addEventListener('click', (e) => {
       e.preventDefault();
-      rendition.display(a.dataset.href);
+      view.goTo(a.dataset.href);
       document.getElementById('tocPanel').classList.remove('open');
     });
   });
@@ -356,41 +250,34 @@ function renderToc(toc, rendition) {
 // ─────────────────────────────────────────────
 // テーマ・フォント設定
 // ─────────────────────────────────────────────
-function applyTheme(rendition, settings) {
+const THEME_STYLES = {
+  white: { background: '#ffffff', color: '#1a1a1a' },
+  sepia: { background: '#f5ebe0', color: '#3d2b1f' },
+  dark:  { background: '#1e2130', color: '#d4d8e8' },
+};
+
+function applyTheme(view, settings) {
   const theme    = settings.theme    || 'white';
   const fontSize = settings.fontSize || 100;
+  const style    = THEME_STYLES[theme] || THEME_STYLES.white;
 
-  const themeStyles = {
-    white: { background: '#ffffff', color: '#1a1a1a' },
-    sepia: { background: '#f5ebe0', color: '#3d2b1f' },
-    dark:  { background: '#1e2130', color: '#d4d8e8' },
-  };
-  const style = themeStyles[theme] || themeStyles.white;
-
-  Object.entries(themeStyles).forEach(([name, s]) => {
-    rendition.themes.register(name, {
-      'html': { background: `${s.background} !important`, color: `${s.color} !important` },
-      'body': { background: `${s.background} !important`, color: `${s.color} !important` },
-      'p':    { color: `${s.color} !important` },
-    });
-  });
-  rendition.themes.select(theme);
-  rendition.themes.fontSize(`${fontSize}%`);
-
-  try {
-    document.querySelectorAll('#viewer iframe').forEach(iframe => {
-      const doc = iframe.contentDocument || iframe.contentWindow?.document;
-      if (!doc) return;
-      doc.documentElement.style.setProperty('background', style.background, 'important');
-      doc.documentElement.style.setProperty('color', style.color, 'important');
+  // foliate-js の各セクションのドキュメントにテーマを適用
+  view.addEventListener('load', (e) => {
+    const doc = e.detail.doc;
+    if (!doc) return;
+    try {
+      doc.documentElement.style.background = style.background;
+      doc.documentElement.style.color = style.color;
       if (doc.body) {
-        doc.body.style.setProperty('background', style.background, 'important');
-        doc.body.style.setProperty('color', style.color, 'important');
+        doc.body.style.background = style.background;
+        doc.body.style.color = style.color;
       }
-    });
-  } catch (e) {
-    console.warn('[reader] iframe style failed:', e);
-  }
+      // フォントサイズは html 要素の font-size で指定
+      doc.documentElement.style.fontSize = `${fontSize}%`;
+    } catch (err) {
+      console.warn('[reader] theme apply to doc failed:', err);
+    }
+  });
 
   document.body.dataset.theme = theme;
 }
@@ -404,7 +291,7 @@ function saveSettings(settings) {
   localStorage.setItem('readerSettings', JSON.stringify(settings));
 }
 
-function initSettings(rendition) {
+function initSettings(view) {
   const settings = loadSettings();
 
   document.getElementById('fontSizeRange').value = settings.fontSize || 100;
@@ -413,7 +300,8 @@ function initSettings(rendition) {
   document.getElementById('fontSizeRange').addEventListener('input', (e) => {
     const size = parseInt(e.target.value);
     document.getElementById('fontSizeLabel').textContent = `${size}%`;
-    rendition.themes.fontSize(`${size}%`);
+    // フォントサイズ変更は次回のセクションロード時反映される
+    // 即座に反映するには全セクションを再描画する必要がある
     settings.fontSize = size;
     saveSettings(settings);
   });
@@ -424,7 +312,7 @@ function initSettings(rendition) {
       document.querySelectorAll('.theme-btn').forEach(b => b.classList.remove('active'));
       btn.classList.add('active');
       settings.theme = btn.dataset.theme;
-      applyTheme(rendition, settings);
+      applyTheme(view, settings);
       saveSettings(settings);
     });
   });
@@ -433,7 +321,7 @@ function initSettings(rendition) {
 // ─────────────────────────────────────────────
 // スワイプ・ホイール操作
 // ─────────────────────────────────────────────
-function initGestures(rendition) {
+function initGestures(view) {
   const el = document.getElementById('readerContainer');
   let touchStartX = 0;
   let touchStartY = 0;
@@ -447,29 +335,17 @@ function initGestures(rendition) {
     const dx = e.changedTouches[0].screenX - touchStartX;
     const dy = e.changedTouches[0].screenY - touchStartY;
     if (Math.abs(dx) < 30 || Math.abs(dx) < Math.abs(dy)) return;
-    if (dx < 0) rendition.next();
-    else        rendition.prev();
+    if (dx < 0) view.next();
+    else        view.prev();
   }, { passive: true });
-
-  rendition.on('touchstart', (e) => {
-    touchStartX = e.changedTouches[0].screenX;
-    touchStartY = e.changedTouches[0].screenY;
-  });
-  rendition.on('touchend', (e) => {
-    const dx = e.changedTouches[0].screenX - touchStartX;
-    const dy = e.changedTouches[0].screenY - touchStartY;
-    if (Math.abs(dx) < 30 || Math.abs(dx) < Math.abs(dy)) return;
-    if (dx < 0) rendition.next();
-    else        rendition.prev();
-  });
 
   let wheelTimer = null;
   el.addEventListener('wheel', (e) => {
     e.preventDefault();
     if (wheelTimer) return;
     wheelTimer = setTimeout(() => { wheelTimer = null; }, 600);
-    if (e.deltaX > 30 || e.deltaY > 30)        rendition.next();
-    else if (e.deltaX < -30 || e.deltaY < -30) rendition.prev();
+    if (e.deltaX > 30 || e.deltaY > 30)        view.next();
+    else if (e.deltaX < -30 || e.deltaY < -30) view.prev();
   }, { passive: false });
 }
 
@@ -502,4 +378,18 @@ function initUiToggles() {
   document.getElementById('backBtn').addEventListener('click', () => {
     location.href = '/index.html';
   });
+
+  // パネル表示時にオーバーレイを制御
+  const panelOverlay = document.getElementById('panelOverlay');
+  document.querySelectorAll('.side-panel').forEach(panel => {
+    const observer = new MutationObserver(() => {
+      const anyOpen = [...document.querySelectorAll('.side-panel')].some(p => p.classList.contains('open'));
+      panelOverlay.classList.toggle('show', anyOpen);
+    });
+    observer.observe(panel, { attributes: true, attributeFilter: ['class'] });
+  });
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(console.error);
+  }
 }

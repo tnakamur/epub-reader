@@ -97,30 +97,13 @@
   <!-- トースト -->
   <div id="toastContainer"></div>
 
-  <!-- EPUB.js (CDN) -->
-  <script src="js/jszip.min.js"></script>
-  <script src="js/epub.min.js"></script>
-
+  <!-- Core scripts -->
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/db.js"></script>
   <script src="js/sync.js"></script>
   <script src="js/highlights.js"></script>
-  <script src="js/reader.js"></script>
-  <script>
-    // パネル表示時にオーバーレイを制御
-    const panelOverlay = document.getElementById('panelOverlay');
-    document.querySelectorAll('.side-panel').forEach(panel => {
-      const observer = new MutationObserver(() => {
-        const anyOpen = [...document.querySelectorAll('.side-panel')].some(p => p.classList.contains('open'));
-        panelOverlay.classList.toggle('show', anyOpen);
-      });
-      observer.observe(panel, { attributes: true, attributeFilter: ['class'] });
-    });
-
-    if ('serviceWorker' in navigator) {
-      navigator.serviceWorker.register('/sw.js').catch(console.error);
-    }
-  </script>
+  <!-- reader.js (ES module, imports foliate-js from CDN) -->
+  <script type="module" src="js/reader.js"></script>
 </body>
 </html>
