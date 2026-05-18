@@ -67,7 +67,6 @@ const highlights = (() => {
       const { draw, annotation } = e.detail;
       if (annotation.type === 'highlight') {
         draw(rects => {
-          // SVG でハイライト矩形を描画
           const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
           g.setAttribute('fill', annotation.color);
           g.style.opacity = '0.3';
@@ -83,6 +82,109 @@ const highlights = (() => {
         });
       }
     });
+
+    // テキスト選択時にハイライトメニューを表示
+    // foliate-js は closed Shadow DOM 内でレンダリングされるため
+    // load イベントで各セクションの document に直接リスナーを追加する
+    _view.addEventListener('load', (e) => {
+      const doc = e.detail?.doc;
+      if (!doc) return;
+      _currentDoc = doc;
+      doc.addEventListener('pointerup', () => {
+        setTimeout(() => _checkSelectionAndShowMenu(), 10);
+      });
+      doc.addEventListener('selectionchange', () => {
+        setTimeout(() => _checkSelectionAndShowMenu(), 10);
+      });
+    });
+  }
+
+  // ── 選択検出 → メニュー表示 ───────────────────
+  let _currentDoc = null;
+
+  function _checkSelectionAndShowMenu() {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0) return;
+    const text = sel.toString();
+    if (!text.trim()) return;
+    const range = sel.getRangeAt(0);
+
+    // 選択範囲が現在のセクション document 内にあるか確認
+    const container = range.commonAncestorContainer;
+    const rootNode = container.nodeType === Node.TEXT_NODE
+      ? container.ownerDocument
+      : container.ownerDocument ?? container;
+    if (_currentDoc && rootNode !== _currentDoc) return;
+
+    // foliate-js の getCFI を使って正しい CFI を生成
+    const index = _view.currentIndex ?? 0;
+    const cfiRange = _view.getCFI?.(index, range) ?? '';
+    _showHighlightMenu(cfiRange, text, range);
+  }
+
+  // ── ハイライト色選択メニュー ──────────────────
+  let _menu = null;
+
+  function _removeMenu() {
+    if (_menu) { _menu.remove(); _menu = null; }
+  }
+
+  function _showHighlightMenu(cfiRange, selectedText, range) {
+    _removeMenu();
+
+    const menu = document.createElement('div');
+    menu.className = 'highlight-menu';
+    menu.innerHTML = `
+      <div class="hm-title">ハイライト色を選択</div>
+      <div class="hm-colors">
+        ${Object.entries(COLORS).map(([name, color]) =>
+          `<button class="hm-color" data-color="${name}" style="background:${color}" title="${name}"></button>`
+        ).join('')}
+      </div>
+      <button class="hm-cancel">キャンセル</button>
+    `;
+
+    // 選択範囲の位置を取得してメニューを配置
+    if (range) {
+      const rect = range.getBoundingClientRect();
+      menu.style.left = `${Math.max(8, rect.left + rect.width / 2 - 110)}px`;
+      menu.style.top  = `${rect.bottom + 4}px`;
+    } else {
+      menu.style.left = '50%';
+      menu.style.top  = '50%';
+      menu.style.transform = 'translate(-50%, -50%)';
+    }
+
+    // 色選択
+    menu.querySelectorAll('.hm-color').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const color = btn.dataset.color;
+        const id = crypto.randomUUID();
+        const h = { id, cfi_range: cfiRange, selected_text: selectedText, color, note: '' };
+        _list.push(h);
+        _applyOne(h);
+        _renderPanel();
+        _removeMenu();
+        await sync.writeHighlight('create', h);
+      });
+    });
+
+    // キャンセル
+    menu.querySelector('.hm-cancel').addEventListener('click', _removeMenu);
+
+    // 外側クリックで閉じる
+    setTimeout(() => {
+      const closeHandler = (ev) => {
+        if (!menu.contains(ev.target)) {
+          _removeMenu();
+          document.removeEventListener('click', closeHandler);
+        }
+      };
+      document.addEventListener('click', closeHandler);
+    }, 0);
+
+    document.body.appendChild(menu);
+    _menu = menu;
   }
 
   async function deleteHighlight(h) {

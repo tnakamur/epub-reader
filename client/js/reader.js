@@ -75,9 +75,13 @@ async function initReader(bookId) {
     const epubBlob = await fetchEpubBlob(bookId);
     if (!epubBlob) return;
 
+    // foliate-js の makeBook は file.name を参照するため
+    // Blob を File に変換してファイル名を付与する
+    const epubFile = new File([epubBlob], bookMeta.filename || 'book.epub', { type: 'application/epub+zip' });
+
     // foliate-js で EPUB を解析
     _setStatus('EPUBを解析中…');
-    const book = await makeBook(epubBlob);
+    const book = await makeBook(epubFile);
     console.log('[reader] Book loaded:', book.metadata?.title, 'dir:', book.dir);
 
     // 進捗復元
