@@ -299,16 +299,15 @@ function applyTheme(view, settings) {
 // 現在の表示セクションにフォントサイズを即座に適用
 function _applyFontSizeToCurrentSection(view, size) {
   try {
-    const iframes = document.querySelectorAll('foliate-view iframe');
-    iframes.forEach(iframe => {
-      try {
-        const doc = iframe.contentDocument;
-        if (doc && doc.documentElement) {
-          doc.documentElement.style.fontSize = `${size}%`;
-        }
-      } catch (err) {}
-    });
-  } catch (err) {}
+    const contents = view.renderer.getContents();
+    for (const { doc } of contents) {
+      if (doc && doc.documentElement) {
+        doc.documentElement.style.fontSize = `${size}%`;
+      }
+    }
+  } catch (err) {
+    console.warn('[reader] applyFontSize error:', err);
+  }
 }
 
 function loadSettings() {

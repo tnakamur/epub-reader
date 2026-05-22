@@ -49,12 +49,34 @@ const highlights = (() => {
     }
   }
 
+  // ── CFIからセクションindexを抽出 ─────────────────
+  // epubcfi(/6/2!/4/232,/1:1,/1:3) → 2 (spineの2番目 = index 1)
+  // resolveNavigation を使って正確に特定する
+  async function _getSectionIndex(cfi) {
+    try {
+      const resolved = await _view.resolveNavigation(cfi);
+      return resolved?.index ?? null;
+    } catch {
+      return null;
+    }
+  }
+
   // ── EPUB上にハイライトを適用 ─────────────────
-  // 全ハイライトを試行。addAnnotation は CFI に一致するセクションにのみ追加する
-  async function _applyAll() {
-    console.log('[hl] applyAll count=' + _list.length);
+  // セクションがロードされたとき、そのセクションに属するハイライトのみ適用
+  async function _applyAllForSection(sectionIndex) {
+    const targets = [];
     for (const h of _list) {
+      // キャッシュ済みならスキップ
+      if (h._appliedSection === sectionIndex) continue;
+      const idx = await _getSectionIndex(h.cfiRange);
+      if (idx === sectionIndex) {
+        targets.push(h);
+      }
+    }
+    console.log('[hl] applyAll section=' + sectionIndex + ' targets=' + targets.length + '/' + _list.length);
+    for (const h of targets) {
       await _applyOne(h);
+      h._appliedSection = sectionIndex;
     }
   }
 
@@ -121,8 +143,8 @@ const highlights = (() => {
       if (!doc) return;
       _currentDoc = doc;
       _attachDocListeners(doc);
-      // セクションがロードされたら、全ハイライトを適用（CFI一致するものだけ描画される）
-      await _applyAll();
+      // セクションがロードされたら、このセクションに属するハイライトを適用
+      await _applyAllForSection(index);
     });
 
     // 既にロード済みのセクションにもリスナーを追加
