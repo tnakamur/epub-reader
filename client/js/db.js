@@ -10,7 +10,7 @@
  */
 
 const DB_NAME    = 'epub-reader';
-const DB_VERSION = 3; // Increment to trigger IndexedDB upgrade (reset cache)
+const DB_VERSION = 4; // Increment to trigger IndexedDB upgrade (clear old syncQueue with snake_case payloads)
 
 let _db = null;
 
@@ -32,6 +32,10 @@ function openDB() {
       if (!db.objectStoreNames.contains('syncQueue')) {
         const store = db.createObjectStore('syncQueue', { keyPath: 'id' });
         store.createIndex('createdAt', 'createdAt');
+      } else {
+        // v4: clear old syncQueue items with snake_case payloads
+        const store = req.transaction.objectStore('syncQueue');
+        store.clear();
       }
     };
 

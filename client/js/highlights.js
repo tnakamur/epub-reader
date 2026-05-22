@@ -50,21 +50,16 @@ const highlights = (() => {
   }
 
   // ── EPUB上にハイライトを適用 ─────────────────
-  // index が指定された場合、そのセクションのハイライトのみ適用する
-  async function _applyAll(index) {
-    const targets = index != null
-      ? _list.filter(h => h._sectionIndex === index)
-      : _list;
-    console.log('[hl] applyAll count=' + targets.length + '/' + _list.length + ' index=' + index);
-    window._serverLog?.('[hl] applyAll count=' + targets.length + '/' + _list.length + ' index=' + index);
-    for (const h of targets) {
+  // 全ハイライトを試行。addAnnotation は CFI に一致するセクションにのみ追加する
+  async function _applyAll() {
+    console.log('[hl] applyAll count=' + _list.length);
+    for (const h of _list) {
       await _applyOne(h);
     }
   }
 
   async function _applyOne(h) {
     console.log('[hl] applyOne cfi=' + h.cfiRange + ' color=' + h.color);
-    window._serverLog?.('[hl] applyOne cfi=' + h.cfiRange + ' color=' + h.color);
     try {
       const annotation = {
         value: h.cfiRange,
@@ -72,13 +67,9 @@ const highlights = (() => {
         color: COLORS[h.color] || COLORS.yellow,
       };
       const result = await _view.addAnnotation(annotation);
-      // セクションindexを保存（load イベントでのフィルタリング用）
-      if (result) h._sectionIndex = result.index;
       console.log('[hl] addAnnotation result:', result);
-      window._serverLog?.('[hl] addAnnotation result index=' + result?.index + ' cfi=' + h.cfiRange);
     } catch (err) {
       console.warn('[hl] addAnnotation error:', err);
-      window._serverLog?.('[hl] addAnnotation error: ' + err.message);
     }
   }
 
@@ -130,8 +121,8 @@ const highlights = (() => {
       if (!doc) return;
       _currentDoc = doc;
       _attachDocListeners(doc);
-      // セクションがロードされたら、このセクションのハイライトを適用
-      await _applyAll(index);
+      // セクションがロードされたら、全ハイライトを適用（CFI一致するものだけ描画される）
+      await _applyAll();
     });
 
     // 既にロード済みのセクションにもリスナーを追加

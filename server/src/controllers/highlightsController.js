@@ -38,7 +38,12 @@ async function sync(req, res, next) {
 /** POST /api/highlights/:bookId */
 async function create(req, res, next) {
   try {
-    const { cfiRange, selectedText, color, note } = req.body;
+    // Support both camelCase (client) and snake_case (legacy queue) field names
+    const cfiRange = req.body.cfiRange || req.body.cfi_range;
+    const selectedText = req.body.selectedText || req.body.selected_text;
+    const color = req.body.color;
+    const note = req.body.note;
+
     if (!cfiRange || !selectedText) {
       return res.status(400).json({ error: 'cfiRange と selectedText は必須です' });
     }

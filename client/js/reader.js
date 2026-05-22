@@ -272,7 +272,6 @@ const THEME_STYLES = {
 
 function applyTheme(view, settings) {
   const theme    = settings.theme    || 'white';
-  const fontSize = settings.fontSize || 100;
   const style    = THEME_STYLES[theme] || THEME_STYLES.white;
 
   // foliate-js の各セクションのドキュメントにテーマを適用
@@ -280,20 +279,36 @@ function applyTheme(view, settings) {
     const doc = e.detail.doc;
     if (!doc) return;
     try {
+      const currentSettings = loadSettings();
+      const currentFontSize = currentSettings.fontSize || 100;
       doc.documentElement.style.background = style.background;
       doc.documentElement.style.color = style.color;
       if (doc.body) {
         doc.body.style.background = style.background;
         doc.body.style.color = style.color;
       }
-      // フォントサイズは html 要素の font-size で指定
-      doc.documentElement.style.fontSize = `${fontSize}%`;
+      doc.documentElement.style.fontSize = `${currentFontSize}%`;
     } catch (err) {
       console.warn('[reader] theme apply to doc failed:', err);
     }
   });
 
   document.body.dataset.theme = theme;
+}
+
+// 現在の表示セクションにフォントサイズを即座に適用
+function _applyFontSizeToCurrentSection(view, size) {
+  try {
+    const iframes = document.querySelectorAll('foliate-view iframe');
+    iframes.forEach(iframe => {
+      try {
+        const doc = iframe.contentDocument;
+        if (doc && doc.documentElement) {
+          doc.documentElement.style.fontSize = `${size}%`;
+        }
+      } catch (err) {}
+    });
+  } catch (err) {}
 }
 
 function loadSettings() {
@@ -318,10 +333,9 @@ function initSettings(view) {
     saveSettings(settings);
     console.log('[reader] fontSize changed to', size, 'lastLocation:', view.lastLocation);
     window._serverLog?.('[reader] fontSize changed to ' + size);
-    // フォントサイズ変更を即座に適用するため再描画
-    if (view.lastLocation) {
-      view.init({ lastLocation: view.lastLocation, showTextStart: false });
-    }
+    // フォントサイズを即座に適用：現在のセクションのドキュメントに直接設定
+    _applyFontSizeToCurrentSection(view, size);
+    // 次回以降のloadイベントで適用されるよう保存のみ
   });
 
   document.querySelectorAll('.theme-btn').forEach(btn => {
