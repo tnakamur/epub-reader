@@ -58,6 +58,7 @@ const sync = {
 
       if (type === 'highlight:create') {
         res = await api.post(`/api/highlights/${payload.bookId}`, payload);
+        if (res && !res.ok) console.warn('[sync] highlight:create failed', res.status, res.data);
       } else if (type === 'highlight:update') {
         res = await api.patch(`/api/highlights/${payload.id}`, payload);
       } else if (type === 'highlight:delete') {
@@ -85,6 +86,7 @@ const sync = {
       let res;
       if (type === 'create') {
         res = await api.post(`/api/highlights/${payload.bookId}`, payload);
+        if (res && !res.ok) console.warn('[sync] highlight:create failed', res.status, res.data);
       } else if (type === 'update') {
         res = await api.patch(`/api/highlights/${payload.id}`, payload);
       } else if (type === 'delete') {

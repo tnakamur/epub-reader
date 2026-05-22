@@ -22,49 +22,85 @@ const highlights = (() => {
   async function init(bookId, view) {
     _bookId = bookId;
     _view   = view;
+    console.log('[hl] init called, view:', view);
+    window._serverLog?.('[hl] init called');
 
     await _load();
     _bindViewEvents();
     _renderPanel();
+    console.log('[hl] init done');
   }
 
   // ── サーバーからロード ────────────────────────
   async function _load() {
     const res = await api.get(`/api/highlights/${_bookId}`);
     if (res.ok) {
-      _list = res.data;
-      _applyAll();
+      // Convert snake_case to camelCase for internal consistency
+      _list = res.data.map(item => ({
+        id: item.id,
+        bookId: item.book_id,
+        cfiRange: item.cfi_range,
+        selectedText: item.selected_text,
+        color: item.color,
+        note: item.note || ''
+      }));
+      console.log('[hl] loaded from server count=' + _list.length);
+      window._serverLog?.('[hl] loaded from server count=' + _list.length);
     }
   }
 
   // ── EPUB上にハイライトを適用 ─────────────────
-  function _applyAll() {
-    _list.forEach(h => _applyOne(h));
+  // index が指定された場合、そのセクションのハイライトのみ適用する
+  async function _applyAll(index) {
+    const targets = index != null
+      ? _list.filter(h => h._sectionIndex === index)
+      : _list;
+    console.log('[hl] applyAll count=' + targets.length + '/' + _list.length + ' index=' + index);
+    window._serverLog?.('[hl] applyAll count=' + targets.length + '/' + _list.length + ' index=' + index);
+    for (const h of targets) {
+      await _applyOne(h);
+    }
   }
 
-  function _applyOne(h) {
+  async function _applyOne(h) {
+    console.log('[hl] applyOne cfi=' + h.cfiRange + ' color=' + h.color);
+    window._serverLog?.('[hl] applyOne cfi=' + h.cfiRange + ' color=' + h.color);
     try {
-      _view.addAnnotation({
-        value: h.cfi_range,
+      const annotation = {
+        value: h.cfiRange,
         type: 'highlight',
         color: COLORS[h.color] || COLORS.yellow,
-      });
-    } catch {
-      // CFI が無効な場合は無視
+      };
+      const result = await _view.addAnnotation(annotation);
+      // セクションindexを保存（load イベントでのフィルタリング用）
+      if (result) h._sectionIndex = result.index;
+      console.log('[hl] addAnnotation result:', result);
+      window._serverLog?.('[hl] addAnnotation result index=' + result?.index + ' cfi=' + h.cfiRange);
+    } catch (err) {
+      console.warn('[hl] addAnnotation error:', err);
+      window._serverLog?.('[hl] addAnnotation error: ' + err.message);
     }
   }
 
   function _removeOne(h) {
     try {
-      _view.deleteAnnotation({ value: h.cfi_range });
+      _view.deleteAnnotation({ value: h.cfiRange });
     } catch {}
   }
 
   // ── テキスト選択 → ハイライト作成 ────────────
   function _bindViewEvents() {
+    // create-overlayer イベントの確認
+    _view.addEventListener('create-overlayer', (e) => {
+      console.log('[hl] create-overlayer index=' + e.detail?.index);
+      window._serverLog?.('[hl] create-overlayer index=' + e.detail?.index);
+    });
+
     // draw-annotation イベントでハイライト描画方法を指定
     _view.addEventListener('draw-annotation', (e) => {
       const { draw, annotation } = e.detail;
+      console.log('[hl] draw-annotation type=' + annotation.type + ' value=' + annotation.value + ' color=' + annotation.color);
+      window._serverLog?.('[hl] draw-annotation type=' + annotation.type + ' color=' + annotation.color);
       if (annotation.type === 'highlight') {
         draw(rects => {
           const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -86,41 +122,81 @@ const highlights = (() => {
     // テキスト選択時にハイライトメニューを表示
     // foliate-js は closed Shadow DOM 内でレンダリングされるため
     // load イベントで各セクションの document に直接リスナーを追加する
-    _view.addEventListener('load', (e) => {
+    _view.addEventListener('load', async (e) => {
       const doc = e.detail?.doc;
+      const index = e.detail?.index;
+      console.log('[hl] load event fired, index:', index);
+      window._serverLog?.('[hl] load event fired, index=' + index);
       if (!doc) return;
       _currentDoc = doc;
-      doc.addEventListener('pointerup', () => {
-        setTimeout(() => _checkSelectionAndShowMenu(), 10);
-      });
-      doc.addEventListener('selectionchange', () => {
-        setTimeout(() => _checkSelectionAndShowMenu(), 10);
-      });
+      _attachDocListeners(doc);
+      // セクションがロードされたら、このセクションのハイライトを適用
+      await _applyAll(index);
+    });
+
+    // 既にロード済みのセクションにもリスナーを追加
+    // (view.init で load イベントが発火済みの場合)
+    _attachToExistingSections();
+  }
+
+  // ── セクション document にリスナー追加 ─────────
+  let _pendingSelection = null;
+
+  function _attachDocListeners(doc) {
+    // selectionchange: 選択を記録するだけ（メニューは出さない）
+    doc.addEventListener('selectionchange', () => {
+      const sel = _currentDoc?.defaultView?.getSelection?.()
+        ?? window.getSelection();
+      if (sel && sel.rangeCount > 0 && sel.toString().trim()) {
+        _pendingSelection = {
+          text: sel.toString(),
+          range: sel.getRangeAt(0),
+        };
+      }
+    });
+    // pointerup: 選択確定時にメニューを表示
+    doc.addEventListener('pointerup', () => {
+      setTimeout(() => {
+        if (_pendingSelection) {
+          const { text, range } = _pendingSelection;
+          _pendingSelection = null;
+          const index = _view.currentIndex ?? 0;
+          console.log('[hl] pointerup currentIndex=' + index);
+          window._serverLog?.('[hl] pointerup currentIndex=' + index);
+          const cfiRange = _view.getCFI?.(index, range) ?? '';
+          console.log('[hl] pointerup show menu cfi=' + cfiRange + ' text=' + text.substring(0, 30));
+          window._serverLog?.('[hl] pointerup show menu');
+          _showHighlightMenu(cfiRange, text, range);
+        }
+      }, 10);
+    });
+  }
+
+  function _attachToExistingSections() {
+    // foliate-js の renderer は iframe 内にセクションをレンダリングする
+    // closed Shadow DOM の外からは直接アクセスできないが、
+    // book.sections の各セクションの iframe を探す
+    const iframes = document.querySelectorAll('iframe');
+    console.log('[hl] existing iframes:', iframes.length);
+    window._serverLog?.('[hl] existing iframes: ' + iframes.length);
+    iframes.forEach((iframe, i) => {
+      try {
+        const doc = iframe.contentDocument;
+        if (doc) {
+          console.log('[hl] iframe ' + i + ' doc found');
+          window._serverLog?.('[hl] iframe ' + i + ' doc found');
+          _currentDoc = doc;
+          _attachDocListeners(doc);
+        }
+      } catch (err) {
+        window._serverLog?.('[hl] iframe ' + i + ' error: ' + err.message);
+      }
     });
   }
 
   // ── 選択検出 → メニュー表示 ───────────────────
   let _currentDoc = null;
 
-  function _checkSelectionAndShowMenu() {
-    const sel = window.getSelection();
-    if (!sel || sel.rangeCount === 0) return;
-    const text = sel.toString();
-    if (!text.trim()) return;
-    const range = sel.getRangeAt(0);
-
-    // 選択範囲が現在のセクション document 内にあるか確認
-    const container = range.commonAncestorContainer;
-    const rootNode = container.nodeType === Node.TEXT_NODE
-      ? container.ownerDocument
-      : container.ownerDocument ?? container;
-    if (_currentDoc && rootNode !== _currentDoc) return;
-
-    // foliate-js の getCFI を使って正しい CFI を生成
-    const index = _view.currentIndex ?? 0;
-    const cfiRange = _view.getCFI?.(index, range) ?? '';
-    _showHighlightMenu(cfiRange, text, range);
-  }
 
   // ── ハイライト色選択メニュー ──────────────────
   let _menu = null;
@@ -134,6 +210,8 @@ const highlights = (() => {
 
     const menu = document.createElement('div');
     menu.className = 'highlight-menu';
+    console.log('[hl] creating menu, range:', range);
+    window._serverLog?.('[hl] creating menu');
     menu.innerHTML = `
       <div class="hm-title">ハイライト色を選択</div>
       <div class="hm-colors">
@@ -145,10 +223,18 @@ const highlights = (() => {
     `;
 
     // 選択範囲の位置を取得してメニューを配置
+    // ビューポート内に収める
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
     if (range) {
       const rect = range.getBoundingClientRect();
-      menu.style.left = `${Math.max(8, rect.left + rect.width / 2 - 110)}px`;
-      menu.style.top  = `${rect.bottom + 4}px`;
+      // 縦書きの場合、選択範囲の右側にメニューを表示
+      const left = Math.min(vw - 230, Math.max(8, rect.right + 4));
+      const top = Math.min(vh - 120, Math.max(8, rect.top));
+      console.log('[hl] menu pos:', { left, top, rect, vw, vh });
+      window._serverLog?.('[hl] menu pos left=' + left + ' top=' + top);
+      menu.style.left = `${left}px`;
+      menu.style.top  = `${top}px`;
     } else {
       menu.style.left = '50%';
       menu.style.top  = '50%';
@@ -160,7 +246,7 @@ const highlights = (() => {
       btn.addEventListener('click', async () => {
         const color = btn.dataset.color;
         const id = crypto.randomUUID();
-        const h = { id, cfi_range: cfiRange, selected_text: selectedText, color, note: '' };
+        const h = { id, bookId: _bookId, cfiRange, selectedText, color, note: '' };
         _list.push(h);
         _applyOne(h);
         _renderPanel();
@@ -213,7 +299,7 @@ const highlights = (() => {
       <div class="hl-item" data-id="${h.id}">
         <span class="hl-color-dot" style="background:${COLORS[h.color] || COLORS.yellow}"></span>
         <div class="hl-body">
-          <p class="hl-text">${escHtml(h.selected_text)}</p>
+          <p class="hl-text">${escHtml(h.selectedText)}</p>
           <textarea class="hl-note" placeholder="メモを追加…" data-id="${h.id}">${escHtml(h.note || '')}</textarea>
         </div>
         <button class="hl-delete" data-id="${h.id}" title="削除">✕</button>
@@ -225,7 +311,7 @@ const highlights = (() => {
       el.addEventListener('click', (e) => {
         if (e.target.tagName === 'BUTTON' || e.target.tagName === 'TEXTAREA') return;
         const h = _list.find(x => x.id === el.dataset.id);
-        if (h) _view.goTo(h.cfi_range);
+        if (h) _view.goTo(h.cfiRange);
       });
     });
 

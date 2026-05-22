@@ -32,7 +32,8 @@ function _setStatus(msg) {
 }
 
 // サーバーへログを送信するバッファ付きロガー
-const _serverLog = (() => {
+window._serverLog = (() => {
+  const DEBUG = true;
   const buf = [];
   let timer = null;
   const flush = () => {
@@ -97,7 +98,19 @@ async function initReader(bookId) {
     const container = document.getElementById('viewer');
     container.appendChild(view);
 
-    // 書籍を開く
+    // ハイライト初期化（view.open より前にイベントリスナーを登録するため）
+    console.log('[reader] calling highlights.init, _serverLog:', typeof window._serverLog);
+    window._serverLog?.('[reader] calling highlights.init');
+    await highlights.init(bookId, view);
+    console.log('[reader] highlights.init done');
+
+    // 書籍を開く（create-overlayer イベント確認用）
+    view.addEventListener('create-overlayer', (e) => {
+      console.log('[reader] create-overlayer fired, index:', e.detail?.index);
+    });
+    view.addEventListener('draw-annotation', (e) => {
+      console.log('[reader] draw-annotation fired, type:', e.detail?.annotation?.type);
+    });
     await view.open(book);
 
     // 前回の位置から復元、または先頭から開始
@@ -135,9 +148,6 @@ async function initReader(bookId) {
         });
       }, 2000);
     });
-
-    // ハイライト初期化
-    await highlights.init(bookId, view);
 
     // 設定パネル
     initSettings(view);
@@ -257,7 +267,7 @@ function renderToc(book, view) {
 const THEME_STYLES = {
   white: { background: '#ffffff', color: '#1a1a1a' },
   sepia: { background: '#f5ebe0', color: '#3d2b1f' },
-  dark:  { background: '#1e2130', color: '#d4d8e8' },
+  dark:  { background: '#4a4d60', color: '#ffffff' },
 };
 
 function applyTheme(view, settings) {
@@ -304,10 +314,14 @@ function initSettings(view) {
   document.getElementById('fontSizeRange').addEventListener('input', (e) => {
     const size = parseInt(e.target.value);
     document.getElementById('fontSizeLabel').textContent = `${size}%`;
-    // フォントサイズ変更は次回のセクションロード時反映される
-    // 即座に反映するには全セクションを再描画する必要がある
     settings.fontSize = size;
     saveSettings(settings);
+    console.log('[reader] fontSize changed to', size, 'lastLocation:', view.lastLocation);
+    window._serverLog?.('[reader] fontSize changed to ' + size);
+    // フォントサイズ変更を即座に適用するため再描画
+    if (view.lastLocation) {
+      view.init({ lastLocation: view.lastLocation, showTextStart: false });
+    }
   });
 
   document.querySelectorAll('.theme-btn').forEach(btn => {

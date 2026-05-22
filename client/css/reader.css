@@ -249,11 +249,11 @@ body[data-theme="dark"] .page-btn:hover {
 
 /* ── テーマ別body背景 ── */
 body[data-theme="sepia"] { background: #f5ebe0; }
-body[data-theme="dark"]  { background: #1a1a2e; color: #e0e0e0; }
+body[data-theme="dark"]  { background: #4a4d60; color: #ffffff; }
 body[data-theme="dark"] .reader-header,
-body[data-theme="dark"] .reader-footer { background: #12122a; border-color: #2a2a4a; }
-body[data-theme="dark"] .page-btn { background: rgba(30,30,60,.85); color: #aaa; }
-body[data-theme="dark"] .side-panel { background: #1e1e3a; }
+body[data-theme="dark"] .reader-footer { background: #424558; border-color: #5a5d7a; }
+body[data-theme="dark"] .page-btn { background: rgba(74,77,96,.85); color: #e0e0e0; }
+body[data-theme="dark"] .side-panel { background: #4e5168; }
 
 /* ── foliate-js View ── */
 foliate-view {

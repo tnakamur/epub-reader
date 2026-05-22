@@ -107,6 +107,32 @@
   }
   </script>
 
+  <!-- Polyfills for ES2024 (Object.groupBy, Map.groupBy) -->
+  <script>
+  if (!Object.groupBy) {
+    Object.groupBy = function(items, callback) {
+      const result = {};
+      for (const item of items) {
+        const key = callback(item);
+        if (!result[key]) result[key] = [];
+        result[key].push(item);
+      }
+      return result;
+    };
+  }
+  if (!Map.groupBy) {
+    Map.groupBy = function(items, callback) {
+      const result = new Map();
+      for (const item of items) {
+        const key = callback(item);
+        if (!result.has(key)) result.set(key, []);
+        result.get(key).push(item);
+      }
+      return result;
+    };
+  }
+  </script>
+
   <!-- Core scripts -->
   <script src="js/api.js"></script>
   <script src="js/auth.js"></script>
