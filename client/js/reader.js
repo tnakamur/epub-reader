@@ -26,32 +26,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 // ステータス表示ヘルパー
 // ─────────────────────────────────────────────
 function _setStatus(msg) {
-  console.log('[reader]', msg);
   const el = document.querySelector('#loadingOverlay span');
   if (el) el.textContent = msg;
 }
-
-// サーバーへログを送信するバッファ付きロガー
-window._serverLog = (() => {
-  const DEBUG = true;
-  const buf = [];
-  let timer = null;
-  const flush = () => {
-    if (!buf.length) return;
-    const logs = buf.splice(0);
-    fetch('/api/debug/log', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ logs }),
-    }).catch(() => {});
-  };
-  return (msg) => {
-    console.log('[DEBUG]', msg);
-    buf.push(msg);
-    clearTimeout(timer);
-    timer = setTimeout(flush, 500);
-  };
-})();
 
 // ─────────────────────────────────────────────
 // foliate-js 初期化
@@ -83,7 +60,6 @@ async function initReader(bookId) {
     // foliate-js で EPUB を解析
     _setStatus('EPUBを解析中…');
     const book = await makeBook(epubFile);
-    console.log('[reader] Book loaded:', book.metadata?.title, 'dir:', book.dir);
 
     // 進捗復元
     _setStatus('進捗を復元中…');
@@ -99,28 +75,21 @@ async function initReader(bookId) {
     container.appendChild(view);
 
     // ハイライト初期化（view.open より前にイベントリスナーを登録するため）
-    console.log('[reader] calling highlights.init, _serverLog:', typeof window._serverLog);
-    window._serverLog?.('[reader] calling highlights.init');
     await highlights.init(bookId, view);
-    console.log('[reader] highlights.init done');
 
-    // 書籍を開く（create-overlayer イベント確認用）
-    view.addEventListener('create-overlayer', (e) => {
-      console.log('[reader] create-overlayer fired, index:', e.detail?.index);
-    });
-    view.addEventListener('draw-annotation', (e) => {
-      console.log('[reader] draw-annotation fired, type:', e.detail?.annotation?.type);
-    });
     await view.open(book);
+
+    // テーマ・フォント設定（view.init() より前に load イベントリスナーを登録）
+    applyTheme(view, loadSettings());
+
+    // 設定パネル（スライダーでフォントサイズ変更 → 即座に適用）
+    initSettings(view);
 
     // 前回の位置から復元、または先頭から開始
     await view.init({ lastLocation, showTextStart: !lastLocation });
 
     // ローディング非表示
     document.getElementById('loadingOverlay').style.display = 'none';
-
-    // テーマ・フォント設定
-    applyTheme(view, loadSettings());
 
     // ページ送りボタン
     document.getElementById('prevBtn').addEventListener('click', () => view.prev());
@@ -149,9 +118,6 @@ async function initReader(bookId) {
       }, 2000);
     });
 
-    // 設定パネル
-    initSettings(view);
-
     // 目次
     renderToc(book, view);
 
@@ -162,7 +128,6 @@ async function initReader(bookId) {
     initUiToggles();
 
   } catch (err) {
-    console.error('[reader] initReader error:', err);
     _setStatus('エラー: ' + err.message);
   }
 }
@@ -174,12 +139,10 @@ async function fetchEpubBlob(bookId) {
   try {
     const cached = await db.booksCache.get(bookId);
     if (cached?.blob) {
-      console.log('[reader] EPUB from IndexedDB cache');
-      _setStatus('キャッシュからEPUBを読み込み中…');
+        _setStatus('キャッシュからEPUBを読み込み中…');
       return cached.blob;
     }
   } catch (e) {
-    console.warn('[reader] Cache read failed:', e);
   }
 
   if (!navigator.onLine) {
@@ -201,17 +164,14 @@ async function fetchEpubBlob(bookId) {
 
     _setStatus('EPUBを受信中…');
     const blob = await res.blob();
-    console.log('[reader] EPUB fetched, size:', blob.size);
 
     try {
       await db.booksCache.set(bookId, blob);
     } catch (e) {
-      console.warn('[reader] Cache write failed:', e);
-    }
+      }
 
     return blob;
   } catch (err) {
-    console.error('[reader] EPUB fetch failed:', err);
     _setStatus('取得エラー: ' + err.message);
     alert('EPUBの読み込みに失敗しました\n' + err.message);
     location.href = '/index.html';
@@ -288,15 +248,12 @@ function applyTheme(view, settings) {
         doc.body.style.color = style.color;
       }
       doc.documentElement.style.fontSize = `${currentFontSize}%`;
-    } catch (err) {
-      console.warn('[reader] theme apply to doc failed:', err);
-    }
+    } catch {}
   });
 
   document.body.dataset.theme = theme;
 }
 
-// 現在の表示セクションにフォントサイズを即座に適用
 function _applyFontSizeToCurrentSection(view, size) {
   try {
     const contents = view.renderer.getContents();
@@ -305,9 +262,7 @@ function _applyFontSizeToCurrentSection(view, size) {
         doc.documentElement.style.fontSize = `${size}%`;
       }
     }
-  } catch (err) {
-    console.warn('[reader] applyFontSize error:', err);
-  }
+  } catch {}
 }
 
 function loadSettings() {
@@ -330,11 +285,7 @@ function initSettings(view) {
     document.getElementById('fontSizeLabel').textContent = `${size}%`;
     settings.fontSize = size;
     saveSettings(settings);
-    console.log('[reader] fontSize changed to', size, 'lastLocation:', view.lastLocation);
-    window._serverLog?.('[reader] fontSize changed to ' + size);
-    // フォントサイズを即座に適用：現在のセクションのドキュメントに直接設定
     _applyFontSizeToCurrentSection(view, size);
-    // 次回以降のloadイベントで適用されるよう保存のみ
   });
 
   document.querySelectorAll('.theme-btn').forEach(btn => {

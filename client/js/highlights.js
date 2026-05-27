@@ -22,13 +22,9 @@ const highlights = (() => {
   async function init(bookId, view) {
     _bookId = bookId;
     _view   = view;
-    console.log('[hl] init called, view:', view);
-    window._serverLog?.('[hl] init called');
-
     await _load();
     _bindViewEvents();
     _renderPanel();
-    console.log('[hl] init done');
   }
 
   // ── サーバーからロード ────────────────────────
@@ -44,8 +40,6 @@ const highlights = (() => {
         color: item.color,
         note: item.note || ''
       }));
-      console.log('[hl] loaded from server count=' + _list.length);
-      window._serverLog?.('[hl] loaded from server count=' + _list.length);
     }
   }
 
@@ -62,26 +56,23 @@ const highlights = (() => {
   }
 
   // ── EPUB上にハイライトを適用 ─────────────────
-  // セクションがロードされたとき、そのセクションに属するハイライトのみ適用
-  async function _applyAllForSection(sectionIndex) {
-    const targets = [];
-    for (const h of _list) {
-      // キャッシュ済みならスキップ
-      if (h._appliedSection === sectionIndex) continue;
-      const idx = await _getSectionIndex(h.cfiRange);
-      if (idx === sectionIndex) {
-        targets.push(h);
+  async function _applyAllForLoadedSections() {
+    const contents = _view.renderer?.getContents?.() ?? [];
+    for (const { index: sectionIndex } of contents) {
+      const targets = [];
+      for (const h of _list) {
+        const idx = await _getSectionIndex(h.cfiRange);
+        if (idx === sectionIndex) {
+          targets.push(h);
+        }
       }
-    }
-    console.log('[hl] applyAll section=' + sectionIndex + ' targets=' + targets.length + '/' + _list.length);
-    for (const h of targets) {
-      await _applyOne(h);
-      h._appliedSection = sectionIndex;
+      for (const h of targets) {
+        await _applyOne(h);
+      }
     }
   }
 
   async function _applyOne(h) {
-    console.log('[hl] applyOne cfi=' + h.cfiRange + ' color=' + h.color);
     try {
       const annotation = {
         value: h.cfiRange,
@@ -89,10 +80,7 @@ const highlights = (() => {
         color: COLORS[h.color] || COLORS.yellow,
       };
       const result = await _view.addAnnotation(annotation);
-      console.log('[hl] addAnnotation result:', result);
-    } catch (err) {
-      console.warn('[hl] addAnnotation error:', err);
-    }
+    } catch {}
   }
 
   function _removeOne(h) {
@@ -103,17 +91,10 @@ const highlights = (() => {
 
   // ── テキスト選択 → ハイライト作成 ────────────
   function _bindViewEvents() {
-    // create-overlayer イベントの確認
-    _view.addEventListener('create-overlayer', (e) => {
-      console.log('[hl] create-overlayer index=' + e.detail?.index);
-      window._serverLog?.('[hl] create-overlayer index=' + e.detail?.index);
-    });
 
     // draw-annotation イベントでハイライト描画方法を指定
     _view.addEventListener('draw-annotation', (e) => {
       const { draw, annotation } = e.detail;
-      console.log('[hl] draw-annotation type=' + annotation.type + ' value=' + annotation.value + ' color=' + annotation.color);
-      window._serverLog?.('[hl] draw-annotation type=' + annotation.type + ' color=' + annotation.color);
       if (annotation.type === 'highlight') {
         draw(rects => {
           const g = document.createElementNS('http://www.w3.org/2000/svg', 'g');
@@ -137,14 +118,21 @@ const highlights = (() => {
     // load イベントで各セクションの document に直接リスナーを追加する
     _view.addEventListener('load', async (e) => {
       const doc = e.detail?.doc;
-      const index = e.detail?.index;
-      console.log('[hl] load event fired, index:', index);
-      window._serverLog?.('[hl] load event fired, index=' + index);
       if (!doc) return;
       _currentDoc = doc;
       _attachDocListeners(doc);
-      // セクションがロードされたら、このセクションに属するハイライトを適用
-      await _applyAllForSection(index);
+      // セクションがロードされたら、ロード済み全セクションにハイライトを適用
+      await _applyAllForLoadedSections();
+    });
+
+    // relocate イベントでロード済みセクションにハイライトを適用
+    // (初期表示時に前回位置から復元された場合、load イベントだけでは全セクションに適用できないため)
+    let _relocateTimer = null;
+    _view.addEventListener('relocate', () => {
+      clearTimeout(_relocateTimer);
+      _relocateTimer = setTimeout(() => {
+        _applyAllForLoadedSections();
+      }, 100);
     });
 
     // 既にロード済みのセクションにもリスナーを追加
@@ -173,12 +161,20 @@ const highlights = (() => {
         if (_pendingSelection) {
           const { text, range } = _pendingSelection;
           _pendingSelection = null;
-          const index = _view.currentIndex ?? 0;
-          console.log('[hl] pointerup currentIndex=' + index);
-          window._serverLog?.('[hl] pointerup currentIndex=' + index);
+          // 現在表示されているセクションのインデックスを取得
+          // _view.currentIndex が実際の表示セクションと一致しない場合があるため、
+          // getContents() から現在ロードされているセクションを取得する
+          const contents = _view.renderer?.getContents?.() ?? [];
+          let index;
+          if (contents.length > 0) {
+            // 最初のセクションを現在表示されているセクションとして使用
+            // フォリエイト-jsでは通常、getContents()[0] が現在表示されているセクション
+            index = contents[0].index;
+          } else {
+            // フォールバック: _view.currentIndex を使用
+            index = _view.currentIndex ?? 0;
+          }
           const cfiRange = _view.getCFI?.(index, range) ?? '';
-          console.log('[hl] pointerup show menu cfi=' + cfiRange + ' text=' + text.substring(0, 30));
-          window._serverLog?.('[hl] pointerup show menu');
           _showHighlightMenu(cfiRange, text, range);
         }
       }, 10);
@@ -190,20 +186,14 @@ const highlights = (() => {
     // closed Shadow DOM の外からは直接アクセスできないが、
     // book.sections の各セクションの iframe を探す
     const iframes = document.querySelectorAll('iframe');
-    console.log('[hl] existing iframes:', iframes.length);
-    window._serverLog?.('[hl] existing iframes: ' + iframes.length);
-    iframes.forEach((iframe, i) => {
+    iframes.forEach((iframe) => {
       try {
         const doc = iframe.contentDocument;
         if (doc) {
-          console.log('[hl] iframe ' + i + ' doc found');
-          window._serverLog?.('[hl] iframe ' + i + ' doc found');
           _currentDoc = doc;
           _attachDocListeners(doc);
         }
-      } catch (err) {
-        window._serverLog?.('[hl] iframe ' + i + ' error: ' + err.message);
-      }
+      } catch {}
     });
   }
 
@@ -223,8 +213,6 @@ const highlights = (() => {
 
     const menu = document.createElement('div');
     menu.className = 'highlight-menu';
-    console.log('[hl] creating menu, range:', range);
-    window._serverLog?.('[hl] creating menu');
     menu.innerHTML = `
       <div class="hm-title">ハイライト色を選択</div>
       <div class="hm-colors">
@@ -244,8 +232,6 @@ const highlights = (() => {
       // 縦書きの場合、選択範囲の右側にメニューを表示
       const left = Math.min(vw - 230, Math.max(8, rect.right + 4));
       const top = Math.min(vh - 120, Math.max(8, rect.top));
-      console.log('[hl] menu pos:', { left, top, rect, vw, vh });
-      window._serverLog?.('[hl] menu pos left=' + left + ' top=' + top);
       menu.style.left = `${left}px`;
       menu.style.top  = `${top}px`;
     } else {
