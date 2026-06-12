@@ -17,6 +17,7 @@ const bookmarks = (() => {
     _view   = view;
     await _load();
     _bindViewEvents();
+    _initCurrentCfi();
     _renderPanel();
   }
 
@@ -36,6 +37,33 @@ const bookmarks = (() => {
       _currentCfi = e.detail?.cfi ?? null;
       _updateToolbarButton();
     });
+  }
+
+  function _waitForViewReady() {
+    return new Promise((resolve) => {
+      if (_view.renderer?.getContents?.()?.length > 0) {
+        resolve();
+        return;
+      }
+      const handler = () => {
+        _view.removeEventListener('load', handler);
+        resolve();
+      };
+      _view.addEventListener('load', handler);
+      // タイムアウト: 5秒で諦める
+      setTimeout(resolve, 5000);
+    });
+  }
+
+  function _initCurrentCfi() {
+    try {
+      // lastLocation から CFI を取得（オブジェクトの cfi プロパティ）
+      const ll = _view.lastLocation;
+      if (ll) {
+        _currentCfi = typeof ll === 'string' ? ll : (ll.cfi ?? ll.href ?? null);
+      }
+    } catch {}
+    _updateToolbarButton();
   }
 
   function _updateToolbarButton() {
@@ -66,10 +94,17 @@ const bookmarks = (() => {
     `).join('');
 
     panel.querySelectorAll('.hl-item').forEach(el => {
-      el.addEventListener('click', (e) => {
+      el.addEventListener('click', async (e) => {
         if (e.target.tagName === 'BUTTON') return;
         const b = _list.find(x => x.id === el.dataset.id);
-        if (b) _view.goTo(b.cfi);
+        if (b) {
+          document.getElementById('bookmarkPanel').classList.remove('open');
+          try {
+            // セクションのロードを待ってからジャンプ
+            await _waitForViewReady();
+            await _view.goTo(b.cfi);
+          } catch {}
+        }
       });
     });
 
@@ -85,10 +120,14 @@ const bookmarks = (() => {
     if (!_currentCfi) return;
     const existing = _list.find(b => b.cfi === _currentCfi);
     if (existing) {
-      await deleteBookmark(existing);
+      _list = _list.filter(x => x.id !== existing.id);
+      _renderPanel();
+      _updateToolbarButton();
+      await sync.writeBookmark('delete', { id: existing.id });
     } else {
       await createBookmark(_currentCfi);
     }
+    _updateToolbarButton();
   }
 
   async function createBookmark(cfi) {

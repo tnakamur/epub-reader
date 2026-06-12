@@ -74,9 +74,8 @@ async function initReader(bookId) {
     const container = document.getElementById('viewer');
     container.appendChild(view);
 
-    // ハイライト・ブックマーク初期化（view.open より前にイベントリスナーを登録するため）
+    // ハイライト初期化（view.open より前にイベントリスナーを登録するため）
     await highlights.init(bookId, view);
-    await bookmarks.init(bookId, view);
 
     await view.open(book);
 
@@ -88,6 +87,9 @@ async function initReader(bookId) {
 
     // 前回の位置から復元、または先頭から開始
     await view.init({ lastLocation, showTextStart: !lastLocation });
+
+    // ブックマーク初期化（view.init 後に初期化して renderer を確実に利用可能にする）
+    await bookmarks.init(bookId, view);
 
     // ローディング非表示
     document.getElementById('loadingOverlay').style.display = 'none';
@@ -453,6 +455,13 @@ function initUiToggles() {
     bookmarks.toggleBookmark();
   });
 
+  document.getElementById('bmPanelBtn').addEventListener('click', () => {
+    document.getElementById('bookmarkPanel').classList.toggle('open');
+    document.getElementById('tocPanel').classList.remove('open');
+    document.getElementById('highlightPanel').classList.remove('open');
+    document.getElementById('settingsPanel').classList.remove('open');
+  });
+
   document.getElementById('hlBtn').addEventListener('click', () => {
     document.getElementById('highlightPanel').classList.toggle('open');
     document.getElementById('tocPanel').classList.remove('open');
@@ -464,6 +473,7 @@ function initUiToggles() {
     document.getElementById('settingsPanel').classList.toggle('open');
     document.getElementById('tocPanel').classList.remove('open');
     document.getElementById('highlightPanel').classList.remove('open');
+    document.getElementById('bookmarkPanel').classList.remove('open');
   });
 
   document.getElementById('panelOverlay').addEventListener('click', () => {
