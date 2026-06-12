@@ -315,8 +315,18 @@ function _applyFontSizeToCurrentSection(view, size) {
   try {
     const contents = view.renderer.getContents();
     for (const { doc } of contents) {
-      if (doc && doc.documentElement) {
+      if (doc) {
+        // インラインスタイルを設定
         doc.documentElement.style.fontSize = `${size}%`;
+        // テーマの style 要素も更新（!important で上書きされるため）
+        const styleId = 'reader-theme-style';
+        const styleEl = doc.getElementById(styleId);
+        if (styleEl) {
+          styleEl.textContent = styleEl.textContent.replace(
+            /font-size: [^%]+% !important;/,
+            `font-size: ${size}% !important;`
+          );
+        }
       }
     }
   } catch {}
