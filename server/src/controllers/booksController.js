@@ -52,6 +52,30 @@ async function upload(req, res, next) {
   }
 }
 
+/** PUT /api/books/:id/folder  → フォルダ割り当て */
+async function updateFolder(req, res, next) {
+  try {
+    const folderId = req.body.folder_id || null;
+    const book = await Book.findByIdAndUser(req.params.id, req.user.id);
+    if (!book) return res.status(404).json({ error: '書籍が見つかりません' });
+
+    // folder_id が指定されている场合、所有確認
+    if (folderId) {
+      const { pool } = require('../config/db');
+      const { rows } = await pool.query(
+        'SELECT id FROM folders WHERE id = $1 AND user_id = $2',
+        [folderId, req.user.id]
+      );
+      if (rows.length === 0) return res.status(404).json({ error: 'フォルダが見つかりません' });
+    }
+
+    const updated = await Book.updateFolder(req.params.id, req.user.id, folderId);
+    res.json(updated);
+  } catch (err) {
+    next(err);
+  }
+}
+
 /** DELETE /api/books/:id */
 async function destroy(req, res, next) {
   try {
@@ -68,4 +92,4 @@ async function destroy(req, res, next) {
   }
 }
 
-module.exports = { list, show, upload, destroy };
+module.exports = { list, show, upload, updateFolder, destroy };

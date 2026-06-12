@@ -19,6 +19,7 @@
       <p id="bookAuthor"></p>
     </div>
     <button class="header-icon-btn" id="tocBtn"      title="目次">☰</button>
+    <button class="header-icon-btn" id="bmBtn"       title="ブックマーク">🔖</button>
     <button class="header-icon-btn" id="hlBtn"       title="ハイライト">✏️</button>
     <button class="header-icon-btn" id="settingsBtn" title="設定">⚙️</button>
   </header>
@@ -59,6 +60,15 @@
     <div class="panel-body" id="tocList"></div>
   </aside>
 
+  <!-- ブックマークパネル -->
+  <aside class="side-panel" id="bookmarkPanel">
+    <div class="panel-header">
+      <h2>ブックマーク</h2>
+      <button class="panel-close" onclick="document.getElementById('bookmarkPanel').classList.remove('open')">✕</button>
+    </div>
+    <div class="panel-body" id="bookmarkList"></div>
+  </aside>
+
   <!-- ハイライトパネル -->
   <aside class="side-panel" id="highlightPanel">
     <div class="panel-header">
@@ -89,6 +99,13 @@
           <button class="theme-btn active" data-theme="white" title="ホワイト">白</button>
           <button class="theme-btn" data-theme="sepia"  title="セピア">茶</button>
           <button class="theme-btn" data-theme="dark"   title="ダーク">夜</button>
+        </div>
+      </div>
+      <div class="settings-section">
+        <h3>フォント</h3>
+        <div class="font-options">
+          <button class="font-btn active" data-font="serif" title="明朝体">明朝</button>
+          <button class="font-btn" data-font="sans" title="ゴシック体">ゴシック</button>
         </div>
       </div>
     </div>
@@ -139,6 +156,7 @@
   <script src="js/db.js"></script>
   <script src="js/sync.js"></script>
   <script src="js/highlights.js"></script>
+  <script src="js/bookmarks.js"></script>
   <!-- reader.js (ES module, imports foliate-js from CDN) -->
   <script type="module" src="js/reader.js"></script>
 </body>

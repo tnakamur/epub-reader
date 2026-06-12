@@ -74,8 +74,9 @@ async function initReader(bookId) {
     const container = document.getElementById('viewer');
     container.appendChild(view);
 
-    // ハイライト初期化（view.open より前にイベントリスナーを登録するため）
+    // ハイライト・ブックマーク初期化（view.open より前にイベントリスナーを登録するため）
     await highlights.init(bookId, view);
+    await bookmarks.init(bookId, view);
 
     await view.open(book);
 
@@ -230,26 +231,82 @@ const THEME_STYLES = {
   dark:  { background: '#4a4d60', color: '#ffffff' },
 };
 
-function applyTheme(view, settings) {
-  const theme    = settings.theme    || 'white';
-  const style    = THEME_STYLES[theme] || THEME_STYLES.white;
+const FONT_FAMILIES = {
+  serif: '"Hiragino Mincho ProN", "Noto Serif JP", "Yu Mincho", serif',
+  sans:  '"Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic", sans-serif',
+};
 
-  // foliate-js の各セクションのドキュメントにテーマを適用
-  view.addEventListener('load', (e) => {
-    const doc = e.detail.doc;
-    if (!doc) return;
-    try {
-      const currentSettings = loadSettings();
-      const currentFontSize = currentSettings.fontSize || 100;
-      doc.documentElement.style.background = style.background;
-      doc.documentElement.style.color = style.color;
-      if (doc.body) {
-        doc.body.style.background = style.background;
-        doc.body.style.color = style.color;
+function _applyThemeToDoc(doc, style, theme) {
+  try {
+    const currentSettings = loadSettings();
+    const currentFontSize = currentSettings.fontSize || 100;
+    const currentFontFamily = FONT_FAMILIES[currentSettings.fontFamily] || FONT_FAMILIES.serif;
+    const styleId = 'reader-theme-style';
+    let styleEl = doc.getElementById(styleId);
+    if (!styleEl) {
+      styleEl = doc.createElement('style');
+      styleEl.id = styleId;
+      doc.head.prepend(styleEl);
+    }
+    styleEl.textContent = `
+      *, *::before, *::after {
+        background-color: ${style.background} !important;
+        color: ${style.color} !important;
+        border-color: ${style.color}22 !important;
       }
-      doc.documentElement.style.fontSize = `${currentFontSize}%`;
-    } catch {}
+      html, body {
+        font-size: ${currentFontSize}% !important;
+        font-family: ${currentFontFamily} !important;
+      }
+      a, a:link, a:visited { color: ${style.color} !important; }
+      img, svg { filter: ${theme === 'dark' ? 'brightness(0.85)' : 'none'} !important; }
+    `;
+  } catch {}
+}
+
+function _applyThemeToAllSections(view, style, theme) {
+  try {
+    // EPUB コンテンツの各セクションにテーマを適用
+    const contents = view.renderer.getContents();
+    for (const { doc } of contents) {
+      if (doc) _applyThemeToDoc(doc, style, theme);
+    }
+    // paginator の --theme-bg を設定（Shadow DOM 内で継承される）
+    view.renderer.style.setProperty('--theme-bg', style.background);
+  } catch {}
+}
+
+function applyTheme(view, settings) {
+  const theme = settings.theme || 'white';
+  const style = THEME_STYLES[theme] || THEME_STYLES.white;
+
+  // 新しくロードされるセクションにテーマを適用
+  view.addEventListener('load', (e) => {
+    if (e.detail?.doc) _applyThemeToDoc(e.detail.doc, style, theme);
   });
+
+  // 既に表示中のセクションにも即座に適用
+  _applyThemeToAllSections(view, style, theme);
+
+  // paginator の #background にテーマ背景を設定
+  if (view.renderer) {
+    view.renderer.style.setProperty('--theme-bg', style.background);
+    // setStyles を呼んで #replaceBackground をトリガーし、既存の #background > div を再作成
+    try {
+      view.renderer.setStyles('');
+      // setStyles の requestAnimationFrame 後に背景が更新されるので、
+      // 追加で直接子 div を更新を試みる
+      requestAnimationFrame(() => {
+        try {
+          const root = view.renderer.shadowRoot;
+          if (root) {
+            const bg = root.getElementById('background');
+            if (bg) bg.querySelectorAll('div').forEach(d => { d.style.background = style.background; });
+          }
+        } catch {}
+      });
+    } catch {}
+  }
 
   document.body.dataset.theme = theme;
 }
@@ -261,6 +318,35 @@ function _applyFontSizeToCurrentSection(view, size) {
       if (doc && doc.documentElement) {
         doc.documentElement.style.fontSize = `${size}%`;
       }
+    }
+  } catch {}
+}
+
+function _applyFontFamilyToCurrentSection(view, fontFamily) {
+  _applyFontFamilyToAllSections(view, fontFamily);
+}
+
+function _applyFontFamilyToDoc(doc, fontFamily) {
+  try {
+    const styleId = 'reader-theme-style';
+    const styleEl = doc.getElementById(styleId);
+    if (styleEl) {
+      // 既存の style 要素の font-family 部分を更新
+      styleEl.textContent = styleEl.textContent.replace(
+        /font-family: [^;]+ !important;/g,
+        `font-family: ${fontFamily} !important;`
+      );
+    }
+    doc.documentElement.style.fontFamily = fontFamily;
+    if (doc.body) doc.body.style.fontFamily = fontFamily;
+  } catch {}
+}
+
+function _applyFontFamilyToAllSections(view, fontFamily) {
+  try {
+    const contents = view.renderer.getContents();
+    for (const { doc } of contents) {
+      if (doc) _applyFontFamilyToDoc(doc, fontFamily);
     }
   } catch {}
 }
@@ -296,6 +382,18 @@ function initSettings(view) {
       settings.theme = btn.dataset.theme;
       applyTheme(view, settings);
       saveSettings(settings);
+    });
+  });
+
+  document.querySelectorAll('.font-btn').forEach(btn => {
+    if (btn.dataset.font === (settings.fontFamily || 'serif')) btn.classList.add('active');
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.font-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      settings.fontFamily = btn.dataset.font;
+      saveSettings(settings);
+      const family = FONT_FAMILIES[btn.dataset.font] || FONT_FAMILIES.serif;
+      _applyFontFamilyToAllSections(view, family);
     });
   });
 }
@@ -341,10 +439,15 @@ function initUiToggles() {
     document.getElementById('settingsPanel').classList.remove('open');
   });
 
+  document.getElementById('bmBtn').addEventListener('click', () => {
+    bookmarks.toggleBookmark();
+  });
+
   document.getElementById('hlBtn').addEventListener('click', () => {
     document.getElementById('highlightPanel').classList.toggle('open');
     document.getElementById('tocPanel').classList.remove('open');
     document.getElementById('settingsPanel').classList.remove('open');
+    document.getElementById('bookmarkPanel').classList.remove('open');
   });
 
   document.getElementById('settingsBtn').addEventListener('click', () => {

@@ -6,7 +6,7 @@
  *   - オフライン時のナビゲーション        → キャッシュ済み index.html を返す
  */
 
-const CACHE_NAME    = 'epub-reader-v1';
+const CACHE_NAME    = 'epub-reader-v3';
 const STATIC_ASSETS = [
   '/',
   '/index.html',

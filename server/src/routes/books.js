@@ -17,6 +17,9 @@ router.get('/:id', ctrl.show);
 // POST /api/books       → EPUBアップロード (field名: epub)
 router.post('/', upload.single('epub'), ctrl.upload);
 
+// PUT  /api/books/:id/folder  → フォルダ割り当て
+router.put('/:id/folder', ctrl.updateFolder);
+
 // DELETE /api/books/:id → 削除
 router.delete('/:id', ctrl.destroy);
 

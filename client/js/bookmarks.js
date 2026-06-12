@@ -1,0 +1,120 @@
+'use strict';
+
+/**
+ * bookmarks.js
+ * リーダー画面上のブックマーク UI
+ * reader.js から bookId, view (foliate-js View) を受け取って初期化する
+ */
+
+const bookmarks = (() => {
+  let _bookId = null;
+  let _view   = null;
+  let _list   = [];   // { id, cfi, label }
+  let _currentCfi = null;
+
+  async function init(bookId, view) {
+    _bookId = bookId;
+    _view   = view;
+    await _load();
+    _bindViewEvents();
+    _renderPanel();
+  }
+
+  async function _load() {
+    const res = await api.get(`/api/bookmarks/${_bookId}`);
+    if (res.ok) {
+      _list = res.data.map(item => ({
+        id: item.id,
+        cfi: item.cfi,
+        label: item.label || '',
+      }));
+    }
+  }
+
+  function _bindViewEvents() {
+    _view.addEventListener('relocate', (e) => {
+      _currentCfi = e.detail?.cfi ?? null;
+      _updateToolbarButton();
+    });
+  }
+
+  function _updateToolbarButton() {
+    const btn = document.getElementById('bmBtn');
+    if (!btn || !_currentCfi) return;
+    const exists = _list.some(b => b.cfi === _currentCfi);
+    btn.classList.toggle('active', exists);
+    btn.title = exists ? 'ブックマークを削除' : 'ブックマーク';
+  }
+
+  function _renderPanel() {
+    const panel = document.getElementById('bookmarkList');
+    if (!panel) return;
+
+    if (_list.length === 0) {
+      panel.innerHTML = '<p class="hl-empty">ブックマークはありません</p>';
+      return;
+    }
+
+    panel.innerHTML = _list.map(b => `
+      <div class="hl-item" data-id="${b.id}">
+        <span class="bm-dot"></span>
+        <div class="hl-body">
+          <p class="hl-text">${escHtml(b.label) || b.cfi.substring(0, 60)}</p>
+        </div>
+        <button class="hl-delete" data-id="${b.id}" title="削除">✕</button>
+      </div>
+    `).join('');
+
+    panel.querySelectorAll('.hl-item').forEach(el => {
+      el.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        const b = _list.find(x => x.id === el.dataset.id);
+        if (b) _view.goTo(b.cfi);
+      });
+    });
+
+    panel.querySelectorAll('.hl-delete').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const b = _list.find(x => x.id === btn.dataset.id);
+        if (b) deleteBookmark(b);
+      });
+    });
+  }
+
+  async function toggleBookmark() {
+    if (!_currentCfi) return;
+    const existing = _list.find(b => b.cfi === _currentCfi);
+    if (existing) {
+      await deleteBookmark(existing);
+    } else {
+      await createBookmark(_currentCfi);
+    }
+  }
+
+  async function createBookmark(cfi) {
+    const id = crypto.randomUUID();
+    const b = { id, cfi, label: '' };
+    _list.push(b);
+    _renderPanel();
+    _updateToolbarButton();
+    const saved = await sync.writeBookmark('create', { bookId: _bookId, cfi });
+    if (saved) b.id = saved.id;
+  }
+
+  async function deleteBookmark(b) {
+    _list = _list.filter(x => x.id !== b.id);
+    _renderPanel();
+    _updateToolbarButton();
+    await sync.writeBookmark('delete', { id: b.id });
+  }
+
+  function escHtml(str) {
+    return String(str || '')
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  }
+
+  return { init, toggleBookmark };
+})();
+
+window.bookmarks = bookmarks;

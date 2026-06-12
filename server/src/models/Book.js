@@ -9,7 +9,7 @@ const Book = {
       `SELECT
          b.id, b.title, b.author, b.publisher, b.language,
          b.description, b.cover_path, b.filename, b.file_size,
-         b.created_at,
+         b.folder_id, b.created_at,
          COALESCE(p.percentage, 0) AS percentage,
          p.cfi AS last_cfi
        FROM books b
@@ -54,6 +54,16 @@ const Book = {
       ]
     );
     return rows[0];
+  },
+
+  async updateFolder(bookId, userId, folderId) {
+    const { rows } = await pool.query(
+      `UPDATE books SET folder_id = $3
+       WHERE id = $1 AND user_id = $2
+       RETURNING id, folder_id`,
+      [bookId, userId, folderId]
+    );
+    return rows[0] || null;
   },
 
   async deleteByIdAndUser(bookId, userId) {

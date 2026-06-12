@@ -65,6 +65,10 @@ const sync = {
         res = await api.delete(`/api/highlights/${payload.id}`);
       } else if (type === 'progress:upsert') {
         res = await api.put(`/api/progress/${payload.bookId}`, payload);
+      } else if (type === 'bookmark:create') {
+        res = await api.post(`/api/bookmarks/${payload.bookId}`, payload);
+      } else if (type === 'bookmark:delete') {
+        res = await api.delete(`/api/bookmarks/${payload.id}`);
       } else {
         console.warn('[sync] Unknown queue type:', type);
         return true; // 不明なエントリは削除して先へ進む
@@ -105,6 +109,20 @@ const sync = {
       if (!res.offline && res.ok) return res.data;
     }
     await db.syncQueue.enqueue('progress:upsert', payload);
+    return null;
+  },
+
+  async writeBookmark(type, payload) {
+    if (navigator.onLine) {
+      let res;
+      if (type === 'create') {
+        res = await api.post(`/api/bookmarks/${payload.bookId}`, payload);
+      } else if (type === 'delete') {
+        res = await api.delete(`/api/bookmarks/${payload.id}`);
+      }
+      if (res && !res.offline && res.ok) return res.data;
+    }
+    await db.syncQueue.enqueue(`bookmark:${type}`, payload);
     return null;
   },
 };

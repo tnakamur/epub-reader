@@ -10,7 +10,9 @@ const authRoutes       = require('./routes/auth');
 const booksRoutes      = require('./routes/books');
 const epubRoutes       = require('./routes/epub');
 const highlightsRoutes = require('./routes/highlights');
+const bookmarksRoutes  = require('./routes/bookmarks');
 const progressRoutes   = require('./routes/progress');
+const foldersRoutes  = require('./routes/folders');
 const debugRoutes = require('./routes/debug');
 
 const app = express();
@@ -54,6 +56,8 @@ app.use('/api/auth',       authRoutes);
 app.use('/api/books',      booksRoutes);
 app.use('/epub',           epubRoutes);       // JWT認証後にEPUBファイル配信
 app.use('/api/highlights', highlightsRoutes);
+app.use('/api/bookmarks',  bookmarksRoutes);
+app.use('/api/folders',    foldersRoutes);
 app.use('/api/progress',   progressRoutes);
 app.use('/api/debug',      debugRoutes);
 
