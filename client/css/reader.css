@@ -110,9 +110,40 @@ body[data-theme="dark"] .page-btn:hover {
   border-top: 1px solid var(--color-border);
   flex-shrink: 0;
 }
-.reader-footer .progress-bar { flex: 1; height: 4px; background: var(--color-border); border-radius: 2px; }
-.reader-footer .progress-fill { height: 100%; background: var(--color-primary); border-radius: 2px; }
 #progressLabel { font-size: .78rem; color: var(--color-muted); min-width: 32px; text-align: right; }
+.progress-slider {
+  flex: 1;
+  -webkit-appearance: none;
+  appearance: none;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+  outline: none;
+  cursor: pointer;
+}
+.progress-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: grab;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.progress-slider::-webkit-slider-thumb:active { cursor: grabbing; }
+.progress-slider::-moz-range-thumb {
+  width: 16px; height: 16px;
+  border-radius: 50%;
+  background: var(--color-primary);
+  cursor: grab;
+  border: none;
+  box-shadow: 0 1px 4px rgba(0,0,0,.3);
+}
+.progress-slider::-moz-range-track {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--color-border);
+}
 
 /* ── ローディングオーバーレイ ── */
 #loadingOverlay {

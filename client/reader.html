@@ -41,12 +41,10 @@
     <button class="page-btn" id="nextBtn" aria-label="次のページ">›</button>
   </div>
 
-  <!-- フッター（進捗バー） -->
+  <!-- フッター（進捗スライダー） -->
   <footer class="reader-footer">
-    <div class="progress-bar">
-      <div class="progress-fill" id="progressBar" style="width:0%"></div>
-    </div>
     <span id="progressLabel">0%</span>
+    <input type="range" class="progress-slider" id="progressSlider" min="0" max="100" value="0" step="0.1" aria-label="進捗">
   </footer>
 
   <!-- パネルオーバーレイ -->

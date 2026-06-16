@@ -127,6 +127,9 @@ async function initReader(bookId) {
     // スワイプ・ホイール
     initGestures(view);
 
+    // 進捗スライダー
+    initProgressBar(view);
+
     // UIトグル
     initUiToggles();
 
@@ -186,10 +189,63 @@ async function fetchEpubBlob(bookId) {
 // 進捗バー
 // ─────────────────────────────────────────────
 function updateProgressBar(pct) {
-  const bar   = document.getElementById('progressBar');
-  const label = document.getElementById('progressLabel');
-  if (bar)   bar.style.width   = `${Math.min(100, Math.max(0, pct))}%`;
-  if (label) label.textContent = `${Math.round(pct)}%`;
+  if (isNaN(pct)) return;
+  const slider = document.getElementById('progressSlider');
+  const label  = document.getElementById('progressLabel');
+  const val = Math.min(100, Math.max(0, pct));
+  if (slider) slider.value = val;
+  if (label) label.textContent = `${Math.round(val)}%`;
+}
+
+function initProgressBar(view) {
+  const slider = document.getElementById('progressSlider');
+  if (!slider) return;
+
+  let isDragging = false;
+
+  slider.addEventListener('mousedown', () => { isDragging = true; });
+  slider.addEventListener('touchstart', () => { isDragging = true; }, { passive: true });
+
+  slider.addEventListener('input', () => {
+    const pct = parseFloat(slider.value);
+    document.getElementById('progressLabel').textContent = `${Math.round(pct)}%`;
+    // ドラッグ中は即座にジャンプ
+    if (isDragging && !isNaN(pct)) {
+      goToFractionSafe(view, pct / 100);
+    }
+  });
+
+  slider.addEventListener('mouseup', () => {
+    if (isDragging) {
+      isDragging = false;
+      const pct = parseFloat(slider.value);
+      goToFractionSafe(view, pct / 100);
+    }
+  });
+
+  slider.addEventListener('touchend', () => {
+    if (isDragging) {
+      isDragging = false;
+      const pct = parseFloat(slider.value);
+      goToFractionSafe(view, pct / 100);
+    }
+  });
+
+  slider.addEventListener('change', () => {
+    isDragging = false;
+    const pct = parseFloat(slider.value);
+    goToFractionSafe(view, pct / 100);
+  });
+}
+
+function goToFractionSafe(view, fraction) {
+  if (isNaN(fraction) || fraction < 0 || fraction > 1) return;
+  view.goToFraction(fraction).catch(() => {
+    try {
+      const loc = view.lastLocation;
+      if (loc?.cfi) view.goTo(loc.cfi);
+    } catch {}
+  });
 }
 
 // ─────────────────────────────────────────────
