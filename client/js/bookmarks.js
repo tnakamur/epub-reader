@@ -103,14 +103,11 @@ const bookmarks = (() => {
             // セクションのロードを待ってからジャンプ
             await _waitForViewReady();
             await _view.goTo(b.cfi);
-          } catch (err) {
-            console.error('[bookmark] goTo failed:', err);
+          } catch {
             // フォールバック: renderer 直接呼び出し
             try {
               await _view.renderer?.goTo(b.cfi);
-            } catch (err2) {
-              console.error('[bookmark] renderer.goTo also failed:', err2);
-            }
+            } catch {}
           }
         }
       });
