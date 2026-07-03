@@ -4,7 +4,7 @@
  * reader.js
  * foliate-js 初期化・ページ送り・進捗同期・設定
  */
-import { makeBook, View } from 'https://cdn.jsdelivr.net/npm/foliate-js@1.0.1/view.js';
+import { makeBook, View } from 'foliate-js/view.js';
 
 const DEVICE_ID = (() => {
   let id = localStorage.getItem('deviceId');
@@ -331,6 +331,8 @@ function _applyThemeToAllSections(view, style, theme) {
     }
     // paginator の --theme-bg を設定（Shadow DOM 内で継承される）
     view.renderer.style.setProperty('--theme-bg', style.background);
+    // 同期的に背景を更新
+    try { view.renderer.updateBackgroundSync(style.background); } catch (e) {}
   } catch {}
 }
 
@@ -346,24 +348,14 @@ function applyTheme(view, settings) {
   // 既に表示中のセクションにも即座に適用
   _applyThemeToAllSections(view, style, theme);
 
-  // paginator の #background にテーマ背景を設定
+  // paginator の背景を即座に更新（updateBackgroundSync で同期的に反映）
   if (view.renderer) {
+    // Shadow Host (paginator = view.renderer) に CSS 変数を設定 → Shadow DOM 内に継承される
     view.renderer.style.setProperty('--theme-bg', style.background);
-    // setStyles を呼んで #replaceBackground をトリガーし、既存の #background > div を再作成
-    try {
-      view.renderer.setStyles('');
-      // setStyles の requestAnimationFrame 後に背景が更新されるので、
-      // 追加で直接子 div を更新を試みる
-      requestAnimationFrame(() => {
-        try {
-          const root = view.renderer.shadowRoot;
-          if (root) {
-            const bg = root.getElementById('background');
-            if (bg) bg.querySelectorAll('div').forEach(d => { d.style.background = style.background; });
-          }
-        } catch {}
-      });
-    } catch {}
+    // 同期的な背景更新メソッドを直接呼び出し（CSS変数継承に依存しない確実な方法）
+    try { view.renderer.updateBackgroundSync(style.background); } catch (e) {}
+    // フォールバック: 既存の背景更新メソッドも併用
+    try { view.renderer.setStyles(''); } catch (e) {}
   }
 
   document.body.dataset.theme = theme;
