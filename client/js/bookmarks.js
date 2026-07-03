@@ -103,7 +103,15 @@ const bookmarks = (() => {
             // セクションのロードを待ってからジャンプ
             await _waitForViewReady();
             await _view.goTo(b.cfi);
-          } catch {}
+          } catch (err) {
+            console.error('[bookmark] goTo failed:', err);
+            // フォールバック: renderer 直接呼び出し
+            try {
+              await _view.renderer?.goTo(b.cfi);
+            } catch (err2) {
+              console.error('[bookmark] renderer.goTo also failed:', err2);
+            }
+          }
         }
       });
     });
@@ -117,15 +125,24 @@ const bookmarks = (() => {
   }
 
   async function toggleBookmark() {
-    if (!_currentCfi) return;
-    const existing = _list.find(b => b.cfi === _currentCfi);
+    // _currentCfi が未設定の場合は view から直接取得
+    let cfi = _currentCfi;
+    if (!cfi) {
+      try {
+        const ll = _view.lastLocation;
+        cfi = typeof ll === 'string' ? ll : (ll?.cfi ?? ll?.href ?? null);
+      } catch {}
+    }
+    if (!cfi) return;
+
+    const existing = _list.find(b => b.cfi === cfi);
     if (existing) {
       _list = _list.filter(x => x.id !== existing.id);
       _renderPanel();
       _updateToolbarButton();
       await sync.writeBookmark('delete', { id: existing.id });
     } else {
-      await createBookmark(_currentCfi);
+      await createBookmark(cfi);
     }
     _updateToolbarButton();
   }
