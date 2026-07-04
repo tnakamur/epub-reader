@@ -39,22 +39,6 @@ const bookmarks = (() => {
     });
   }
 
-  function _waitForViewReady() {
-    return new Promise((resolve) => {
-      if (_view.renderer?.getContents?.()?.length > 0) {
-        resolve();
-        return;
-      }
-      const handler = () => {
-        _view.removeEventListener('load', handler);
-        resolve();
-      };
-      _view.addEventListener('load', handler);
-      // タイムアウト: 5秒で諦める
-      setTimeout(resolve, 5000);
-    });
-  }
-
   function _initCurrentCfi() {
     try {
       // lastLocation から CFI を取得（オブジェクトの cfi プロパティ）
@@ -100,8 +84,7 @@ const bookmarks = (() => {
         if (b) {
           document.getElementById('bookmarkPanel').classList.remove('open');
           try {
-            // セクションのロードを待ってからジャンプ
-            await _waitForViewReady();
+            // goTo 内部でターゲットセクションのロード完了まで待機する
             await _view.goTo(b.cfi);
           } catch {
             // フォールバック: renderer 直接呼び出し
