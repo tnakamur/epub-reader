@@ -79,7 +79,7 @@ const highlights = (() => {
         type: 'highlight',
         color: COLORS[h.color] || COLORS.yellow,
       };
-      const result = await _view.addAnnotation(annotation);
+      await _view.addAnnotation(annotation);
     } catch {}
   }
 
@@ -203,9 +203,17 @@ const highlights = (() => {
 
   // ── ハイライト色選択メニュー ──────────────────
   let _menu = null;
+  let _menuOverlay = null;
 
   function _removeMenu() {
-    if (_menu) { _menu.remove(); _menu = null; }
+    if (_menu) {
+      _menu.remove();
+      _menu = null;
+    }
+    if (_menuOverlay) {
+      _menuOverlay.remove();
+      _menuOverlay = null;
+    }
   }
 
   function _showHighlightMenu(cfiRange, selectedText, range) {
@@ -222,6 +230,19 @@ const highlights = (() => {
       </div>
       <button class="hm-cancel">キャンセル</button>
     `;
+
+    // オーバーレイ作成（外側クリックで閉じる用）
+    const overlay = document.createElement('div');
+    overlay.className = 'highlight-menu-overlay';
+    overlay.style.cssText = `
+      position: fixed;
+      inset: 0;
+      background: transparent;
+      z-index: 399;  /* メニューより下 */
+    `;
+    overlay.addEventListener('click', _removeMenu);
+    document.body.appendChild(overlay);
+    _menuOverlay = overlay;
 
     // 選択範囲の位置を取得してメニューを配置
     // ビューポート内に収める
@@ -256,17 +277,6 @@ const highlights = (() => {
 
     // キャンセル
     menu.querySelector('.hm-cancel').addEventListener('click', _removeMenu);
-
-    // 外側クリックで閉じる
-    setTimeout(() => {
-      const closeHandler = (ev) => {
-        if (!menu.contains(ev.target)) {
-          _removeMenu();
-          document.removeEventListener('click', closeHandler);
-        }
-      };
-      document.addEventListener('click', closeHandler);
-    }, 0);
 
     document.body.appendChild(menu);
     _menu = menu;
@@ -337,8 +347,8 @@ const highlights = (() => {
 
   function escHtml(str) {
     return String(str || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      .replace(/&/g, '&').replace(/</g, '<')
+      .replace(/>/g, '>').replace(/"/g, '"');
   }
 
   return { init, deleteHighlight };
