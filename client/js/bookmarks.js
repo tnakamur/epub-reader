@@ -29,6 +29,12 @@ const bookmarks = (() => {
         cfi: item.cfi,
         label: item.label || '',
       }));
+      // 既存ブックマークでラベルがないものを生成
+      for (const b of _list) {
+        if (!b.label) {
+          b.label = await _getLabelFromCfi(b.cfi) || '';
+        }
+      }
     }
   }
 
@@ -48,6 +54,38 @@ const bookmarks = (() => {
       }
     } catch {}
     _updateToolbarButton();
+  }
+
+  // CFI から読みやすいラベルを生成
+  async function _getLabelFromCfi(cfi) {
+    try {
+      const resolved = await _view.resolveNavigation(cfi);
+      const index = resolved?.index;
+      if (index === undefined || index === null) return null;
+
+      // linear なセクションのみを数えて章番号を求める
+      const linearSections = _view.book.sections.filter(s => s.linear !== 'no');
+      const linearIndex = linearSections.findIndex(s => s === _view.book.sections[index]);
+
+      // 章内の位置を取得（lastLocation.section.current を使用）
+      let positionInfo = '';
+      try {
+        const ll = _view.lastLocation;
+        // lastLocation には index ではなく section.current が入っている
+        const currentSection = ll?.section?.current;
+        if (currentSection === index && typeof ll.fraction === 'number') {
+          const sectionPercent = Math.round(ll.fraction * 100);
+          positionInfo = ` (${sectionPercent}%)`;
+        }
+      } catch {}
+
+      if (linearIndex >= 0) {
+        return `第${linearIndex + 1}章${positionInfo}`;
+      }
+      return `セクション ${index + 1}${positionInfo}`;
+    } catch {
+      return null;
+    }
   }
 
   function _updateToolbarButton() {
@@ -130,7 +168,8 @@ const bookmarks = (() => {
 
   async function createBookmark(cfi) {
     const id = crypto.randomUUID();
-    const b = { id, cfi, label: '' };
+    const label = await _getLabelFromCfi(cfi) || '';
+    const b = { id, cfi, label };
     _list.push(b);
     _renderPanel();
     _updateToolbarButton();
