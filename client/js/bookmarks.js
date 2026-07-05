@@ -80,7 +80,8 @@ const bookmarks = (() => {
     panel.querySelectorAll('.hl-item').forEach(el => {
       el.addEventListener('click', async (e) => {
         if (e.target.tagName === 'BUTTON') return;
-        const b = _list.find(x => x.id === el.dataset.id);
+        const targetId = e.currentTarget?.dataset?.id;
+        const b = _list.find(x => x.id === targetId);
         if (b) {
           document.getElementById('bookmarkPanel').classList.remove('open');
           try {
@@ -134,7 +135,10 @@ const bookmarks = (() => {
     _renderPanel();
     _updateToolbarButton();
     const saved = await sync.writeBookmark('create', { bookId: _bookId, cfi });
-    if (saved) b.id = saved.id;
+    if (saved) {
+      b.id = saved.id;
+      _renderPanel();
+    }
   }
 
   async function deleteBookmark(b) {
@@ -146,8 +150,8 @@ const bookmarks = (() => {
 
   function escHtml(str) {
     return String(str || '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+      .replace(/&/g, '&').replace(/</g, '<')
+      .replace(/>/g, '>').replace(/"/g, '"');
   }
 
   return { init, toggleBookmark };
