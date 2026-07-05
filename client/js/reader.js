@@ -67,6 +67,10 @@ async function initReader(bookId) {
     const lastLocation = progressRes.ok && progressRes.data?.cfi
       ? progressRes.data.cfi
       : null;
+    const rawPercentage = progressRes.ok ? progressRes.data?.percentage : null;
+    const lastPercentage = rawPercentage !== null && rawPercentage !== undefined
+      ? parseFloat(rawPercentage)
+      : null;
 
     // View 要素を作成してコンテナに追加
     _setStatus('ビューアーを初期化中…');
@@ -128,7 +132,7 @@ async function initReader(bookId) {
     initGestures(view);
 
     // 進捗スライダー
-    initProgressBar(view);
+    initProgressBar(view, lastPercentage);
 
     // UIトグル
     initUiToggles();
@@ -197,9 +201,14 @@ function updateProgressBar(pct) {
   if (label) label.textContent = `${Math.round(val)}%`;
 }
 
-function initProgressBar(view) {
+function initProgressBar(view, initialPct) {
   const slider = document.getElementById('progressSlider');
   if (!slider) return;
+
+  // 初期値を設定（進捗復元時のパーセンテージ）
+  if (initialPct !== undefined && !isNaN(initialPct)) {
+    updateProgressBar(initialPct);
+  }
 
   let isDragging = false;
 
