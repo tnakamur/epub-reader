@@ -5,7 +5,7 @@ const { pool } = require('../config/db');
 const Bookmark = {
   async findByBook(bookId, userId) {
     const { rows } = await pool.query(
-      `SELECT id, cfi, label, created_at, updated_at
+      `SELECT id, cfi, label, section_percent, created_at, updated_at
        FROM bookmarks
        WHERE book_id = $1 AND user_id = $2 AND deleted_at IS NULL
        ORDER BY created_at ASC`,
@@ -16,7 +16,7 @@ const Bookmark = {
 
   async findUpdatedSince(userId, since) {
     const { rows } = await pool.query(
-      `SELECT id, book_id, cfi, label, deleted_at, created_at, updated_at
+      `SELECT id, book_id, cfi, label, section_percent, deleted_at, created_at, updated_at
        FROM bookmarks
        WHERE user_id = $1 AND updated_at > $2
        ORDER BY updated_at ASC`,
@@ -25,12 +25,12 @@ const Bookmark = {
     return rows;
   },
 
-  async create({ userId, bookId, cfi, label }) {
+  async create({ userId, bookId, cfi, label, sectionPercent }) {
     const { rows } = await pool.query(
-      `INSERT INTO bookmarks (user_id, book_id, cfi, label)
-       VALUES ($1,$2,$3,$4)
-       RETURNING id, cfi, label, created_at`,
-      [userId, bookId, cfi, label || '']
+      `INSERT INTO bookmarks (user_id, book_id, cfi, label, section_percent)
+       VALUES ($1,$2,$3,$4,$5)
+       RETURNING id, cfi, label, section_percent, created_at`,
+      [userId, bookId, cfi, label || '', sectionPercent ?? null]
     );
     return rows[0];
   },

@@ -29,6 +29,7 @@ async function create(req, res, next) {
   try {
     const cfi = req.body.cfi;
     const label = req.body.label;
+    const sectionPercent = req.body.sectionPercent;
     if (!cfi) return res.status(400).json({ error: 'cfi は必須です' });
 
     const book = await Book.findByIdAndUser(req.params.bookId, req.user.id);
@@ -38,6 +39,7 @@ async function create(req, res, next) {
       userId: req.user.id,
       bookId: req.params.bookId,
       cfi, label,
+      sectionPercent,
     });
     res.status(201).json(bookmark);
   } catch (err) {

@@ -9,7 +9,7 @@
 const bookmarks = (() => {
   let _bookId = null;
   let _view   = null;
-  let _list   = [];   // { id, cfi, label }
+  let _list   = [];   // { id, cfi, label, sectionPercent }
   let _currentCfi = null;
 
   async function init(bookId, view) {
@@ -28,11 +28,12 @@ const bookmarks = (() => {
         id: item.id,
         cfi: item.cfi,
         label: item.label || '',
+        sectionPercent: item.section_percent,
       }));
       // 既存ブックマークでラベルがないものを生成
       for (const b of _list) {
         if (!b.label) {
-          b.label = await _getLabelFromCfi(b.cfi) || '';
+          b.label = await _getLabelFromCfi(b.cfi, b.sectionPercent) || '';
         }
       }
     }
@@ -57,7 +58,7 @@ const bookmarks = (() => {
   }
 
   // CFI から読みやすいラベルを生成
-  async function _getLabelFromCfi(cfi) {
+  async function _getLabelFromCfi(cfi, savedSectionPercent) {
     try {
       const resolved = await _view.resolveNavigation(cfi);
       const index = resolved?.index;
@@ -67,17 +68,11 @@ const bookmarks = (() => {
       const linearSections = _view.book.sections.filter(s => s.linear !== 'no');
       const linearIndex = linearSections.findIndex(s => s === _view.book.sections[index]);
 
-      // 章内の位置を取得（lastLocation.section.current を使用）
+      // 保存済みのセクション内位置パーセンテージを使用
       let positionInfo = '';
-      try {
-        const ll = _view.lastLocation;
-        // lastLocation には index ではなく section.current が入っている
-        const currentSection = ll?.section?.current;
-        if (currentSection === index && typeof ll.fraction === 'number') {
-          const sectionPercent = Math.round(ll.fraction * 100);
-          positionInfo = ` (${sectionPercent}%)`;
-        }
-      } catch {}
+      if (savedSectionPercent !== null && savedSectionPercent !== undefined && savedSectionPercent !== '') {
+        positionInfo = ` (${savedSectionPercent}%)`;
+      }
 
       if (linearIndex >= 0) {
         return `第${linearIndex + 1}章${positionInfo}`;
@@ -168,14 +163,26 @@ const bookmarks = (() => {
 
   async function createBookmark(cfi) {
     const id = crypto.randomUUID();
-    const label = await _getLabelFromCfi(cfi) || '';
-    const b = { id, cfi, label };
+    // 作成時の位置パーセンテージを計算して保存
+    let sectionPercent = null;
+    try {
+      const ll = _view.lastLocation;
+      const resolved = await _view.resolveNavigation(cfi);
+      const index = resolved?.index;
+      const currentSection = ll?.section?.current;
+      if (currentSection === index && typeof ll.fraction === 'number') {
+        sectionPercent = Math.round(ll.fraction * 100);
+      }
+    } catch {}
+    const label = await _getLabelFromCfi(cfi, sectionPercent) || '';
+    const b = { id, cfi, label, sectionPercent };
     _list.push(b);
     _renderPanel();
     _updateToolbarButton();
-    const saved = await sync.writeBookmark('create', { bookId: _bookId, cfi });
+    const saved = await sync.writeBookmark('create', { bookId: _bookId, cfi, sectionPercent });
     if (saved) {
       b.id = saved.id;
+      b.sectionPercent = saved.section_percent ?? sectionPercent;
       _renderPanel();
     }
   }
