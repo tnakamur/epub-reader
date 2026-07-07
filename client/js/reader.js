@@ -192,7 +192,11 @@ async function fetchEpubBlob(bookId) {
 // ─────────────────────────────────────────────
 // 進捗バー
 // ─────────────────────────────────────────────
+let isDragging = false;
+let progressUpdateThrottle = 0;
+
 function updateProgressBar(pct) {
+  if (isDragging) return;  // ドラッグ中はスライダー更新をスキップ
   if (isNaN(pct)) return;
   const slider = document.getElementById('progressSlider');
   const label  = document.getElementById('progressLabel');
@@ -210,17 +214,19 @@ function initProgressBar(view, initialPct) {
     updateProgressBar(initialPct);
   }
 
-  let isDragging = false;
-
   slider.addEventListener('mousedown', () => { isDragging = true; });
   slider.addEventListener('touchstart', () => { isDragging = true; }, { passive: true });
 
   slider.addEventListener('input', () => {
     const pct = parseFloat(slider.value);
     document.getElementById('progressLabel').textContent = `${Math.round(pct)}%`;
-    // ドラッグ中は即座にジャンプ
+    // ドラッグ中は即座にジャンプ（スロットリングで頻度制限）
     if (isDragging && !isNaN(pct)) {
-      goToFractionSafe(view, pct / 100);
+      const now = Date.now();
+      if (now - progressUpdateThrottle > 50) {  // 50ms 間隔で制限
+        progressUpdateThrottle = now;
+        goToFractionSafe(view, pct / 100);
+      }
     }
   });
 
