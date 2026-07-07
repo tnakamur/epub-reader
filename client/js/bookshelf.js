@@ -83,6 +83,7 @@ function renderFolderList() {
 function selectFolder(folderId) {
   _activeFolder = folderId;
   updateActiveFolderUI();
+  renderFolderList();  // フォルダリストも更新
 
   // ヘッダ名更新
   const nameEl = document.getElementById('currentFolderName');
@@ -119,19 +120,25 @@ function showFolderContextMenu(e, folder) {
     const name = prompt('フォルダ名を入力', folder.name);
     if (name && name !== folder.name) {
       const res = await api.put(`/api/folders/${folder.id}`, { name });
-      if (res.ok) { folder.name = res.data.name; renderFolderList(); }
+      if (res.ok) {
+        folder.name = res.data.name;
+        renderFolderList();
+        await loadBooks();  // 本の一覧も再取得（フォルダ名変更反映）
+      }
     }
     removeContextMenu();
   });
 
   menu.querySelector('[data-action="delete"]').addEventListener('click', async () => {
     if (confirm(`フォルダ「${folder.name}」を削除しますか？\n本は未分類になります。`)) {
-      const res = await api.delete(`/api/folders/${folder.id}`);
-      if (res.ok || res.status === 204) {
-        _folders = _folders.filter(f => f.id !== folder.id);
+            const res = await api.delete(`/api/folders/${folder.id}`);
+            if (res.ok || res.status === 204) {
+                _folders = _folders.filter(f => f.id !== folder.id);
         if (_activeFolder === folder.id) selectFolder('');
         else renderFolderList();
-      }
+        await loadBooks();  // 本の一覧も再取得
+      } else {
+              }
     }
     removeContextMenu();
   });
@@ -142,11 +149,12 @@ function showFolderContextMenu(e, folder) {
 function promptCreateFolder() {
   const name = prompt('フォルダ名を入力');
   if (!name) return;
-  api.post('/api/folders', { name }).then(res => {
+  api.post('/api/folders', { name }).then(async res => {
     if (res.ok) {
       _folders.push(res.data);
       renderFolderList();
       selectFolder(res.data.id);
+      await loadBooks();  // 本の一覧も再取得
     }
   });
 }
@@ -169,7 +177,7 @@ async function loadBooks() {
 
     showLoading(true);
     const res = await api.get('/api/books');
-    showLoading(false);
+        showLoading(false);
 
     if (res.offline || !res.ok) {
       const cached = await db.booksMeta.getAll();
@@ -200,6 +208,7 @@ function renderBooks(books) {
     filtered = books.filter(b => b.folder_id === _activeFolder);
   }
 
+  
   grid.innerHTML = '';
 
   if (!filtered || filtered.length === 0) {
@@ -278,15 +287,13 @@ function showBookContextMenu(e, book) {
   menu.querySelectorAll('[data-folder-id]').forEach(item => {
     item.addEventListener('click', async () => {
       const folderId = item.dataset.folderId;
-      if (folderId === '__remove__') {
+            if (folderId === '__remove__') {
         await api.put(`/api/books/${book.id}/folder`, { folder_id: null });
-        book.folder_id = null;
       } else {
         await api.put(`/api/books/${book.id}/folder`, { folder_id: folderId });
-        book.folder_id = folderId;
       }
       removeContextMenu();
-      renderBooks(_allBooks);
+      await loadBooks();  // サーバーから再取得して整合性を保つ
     });
   });
 
