@@ -354,6 +354,16 @@ function applyTheme(view, settings) {
     if (e.detail?.doc) _applyThemeToDoc(e.detail.doc, style, theme);
   });
 
+  // 新しくロードされるセクションにフォントサイズを適用（永続化対応）
+  view.addEventListener('load', (e) => {
+    if (e.detail?.doc) {
+      const savedSettings = loadSettings();
+      if (savedSettings.fontSize) {
+        _applyFontSizeToDoc(e.detail.doc, savedSettings.fontSize);
+      }
+    }
+  });
+
   // 既に表示中のセクションにも即座に適用
   _applyThemeToAllSections(view, style, theme);
 
@@ -368,6 +378,22 @@ function applyTheme(view, settings) {
   }
 
   document.body.dataset.theme = theme;
+}
+
+function _applyFontSizeToDoc(doc, size) {
+  try {
+    // インラインスタイルを設定
+    doc.documentElement.style.fontSize = `${size}%`;
+    // テーマの style 要素も更新（!important で上書きされるため）
+    const styleId = 'reader-theme-style';
+    const styleEl = doc.getElementById(styleId);
+    if (styleEl) {
+      styleEl.textContent = styleEl.textContent.replace(
+        /font-size: [^%]+% !important;/,
+        `font-size: ${size}% !important;`
+      );
+    }
+  } catch {}
 }
 
 function _applyFontSizeToCurrentSection(view, size) {
